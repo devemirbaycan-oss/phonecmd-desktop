@@ -57,16 +57,21 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential
 
-      # Windows: node-pty is recompiled for Electron's ABI (its prebuilds aren't
-      # N-API, so they don't fit Electron), and node-gyp fails to auto-detect the
-      # runner's Visual Studio ("Could not find any Visual Studio installation").
-      # Pin Python + the VS version so node-gyp's probe succeeds. Also install a
-      # known-good distutils for node-gyp on Python 3.12+ (distutils was removed).
-      - name: Set up Python for node-gyp (Windows)
-        if: runner.os == 'Windows'
+      # node-pty is recompiled for Electron's ABI (its prebuilds aren't N-API, so
+      # they don't fit Electron). That rebuild uses node-gyp, which on the current
+      # runners breaks two ways:
+      #   • Python 3.12 (runner default) removed `distutils`, which the bundled
+      #     node-gyp imports → "No module named 'distutils'". Pin Python 3.11.
+      #   • The bundled node-gyp predates VS 2022 detection → "Could not find any
+      #     Visual Studio installation". A modern node-gyp (installed below) fixes
+      #     it. Applies to ALL platforms, not just Windows.
+      - name: Set up Python 3.11 for node-gyp
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      - name: Modern node-gyp (handles VS 2022 + no distutils)
+        run: npm install -g node-gyp@10
 
       - name: Install dependencies
         run: npm ci
@@ -75,7 +80,12 @@ jobs:
       # explicitly located. Doing it here (not implicitly inside electron-builder)
       # makes failures obvious and lets us pin the node-gyp/VS settings.
       - name: Rebuild native modules for Electron
-        run: npx --yes @electron/rebuild@^3.6 -f -w node-pty
+        shell: bash
+        run: |
+          # Force @electron/rebuild to use the modern global node-gyp, not the
+          # old one nested in node_modules.
+          export npm_config_node_gyp="$(npm root -g)/node-gyp/bin/node-gyp.js"
+          npx --yes @electron/rebuild@^3.6 -f -w node-pty
         env:
           GYP_MSVS_VERSION: '2022'
           npm_config_msvs_version: '2022'
