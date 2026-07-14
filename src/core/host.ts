@@ -40,6 +40,12 @@ export interface HostOptions {
    * The desktop UI lets the user pick (Never / 1 day / 7 days / …).
    */
   pairingTtlMs?: number | null;
+  /**
+   * Override the cloudflared binary path. Production resolves the bundled one;
+   * tests point this at a binary that exits non-zero to exercise the
+   * tunnel-failure → LAN-fallback path.
+   */
+  cloudflaredBin?: string;
 }
 
 export type HostStatus =
@@ -69,6 +75,8 @@ export class HostCore extends EventEmitter {
   private tunnelHealthTimer: NodeJS.Timeout | null = null;
   /** True while a tunnel respawn is in flight (keeps triggers from stacking). */
   private respawning = false;
+  /** The initial tunnel failed (e.g. offline / 429); keep retrying in background. */
+  private tunnelFailed = false;
   /** The port we actually bound (may differ from the requested one). */
   private _port = 0;
 
@@ -103,18 +111,37 @@ export class HostCore extends EventEmitter {
     //    We always try to discover the LAN IP so the QR can offer a relay-free
     //    path when the phone is on the same network.
     const lan = buildLanEndpoint(port, this.opts.lanHost);
+    const lanFallback = lan ?? `ws://${this.opts.lanHost ?? 'localhost'}:${port}`;
     let endpoint: string;
     if (this.opts.noTunnel) {
-      endpoint = lan ?? `ws://${this.opts.lanHost ?? 'localhost'}:${port}`;
+      endpoint = lanFallback;
       this.log(`tunnel skipped — using ${endpoint}`);
     } else {
       this.emit('status', 'tunneling');
-      this.tunnel = new Tunnel({port});
-      await this.tunnel.start();
-      endpoint = this.tunnel.wssUrl()!;
-      this.log(`tunnel up: ${endpoint}`);
-      if (lan) {
-        this.log(`LAN direct also available: ${lan}`);
+      this.tunnel = new Tunnel({port, bin: this.opts.cloudflaredBin});
+      try {
+        await this.tunnel.start();
+        endpoint = this.tunnel.wssUrl()!;
+        this.log(`tunnel up: ${endpoint}`);
+        if (lan) {
+          this.log(`LAN direct also available: ${lan}`);
+        }
+      } catch (err) {
+        // The tunnel failed to open — offline, or Cloudflare rate-limiting the
+        // account-less quick-tunnel endpoint (HTTP 429). This used to leave the
+        // app stuck on "tunneling" forever. Instead, fall back to LAN-direct so
+        // pairing still works on the same network, and keep retrying the tunnel
+        // in the background (watchTunnel) so remote access comes back on its own.
+        this.tunnel.stop();
+        this.tunnel = null;
+        endpoint = lanFallback;
+        this.log(
+          `tunnel unavailable (${(err as Error).message}) — starting on LAN-direct ${endpoint}. Retrying the tunnel in the background.`,
+        );
+        // watchTunnel() below (its health tick treats "no tunnel" as dead) will
+        // keep respawning until one succeeds, then swap the QR/keycode over to
+        // the relay and re-register with rendezvous — no restart needed.
+        this.tunnelFailed = true;
       }
     }
     this._lanEndpoint = lan;
@@ -174,8 +201,10 @@ export class HostCore extends EventEmitter {
 
     // Auto-recover a dead quick tunnel: respawn cloudflared and re-register the
     // new URL so a paired phone can re-resolve it via rendezvous. (Quick tunnels
-    // rotate/die often.) Only when we actually run a tunnel.
-    if (this.tunnel && !this.opts.noTunnel) {
+    // rotate/die often.) Run whenever we WANT a tunnel — including when the first
+    // attempt failed (tunnelFailed), so the health tick keeps retrying in the
+    // background and upgrades LAN-only → relay once Cloudflare lets us in.
+    if (!this.opts.noTunnel && (this.tunnel || this.tunnelFailed)) {
       this.watchTunnel(port);
     }
 
@@ -257,7 +286,7 @@ export class HostCore extends EventEmitter {
     this.respawning = true;
     try {
       this.tunnel?.stop(); // make sure no old process lingers on the port
-      const next = new Tunnel({port});
+      const next = new Tunnel({port, bin: this.opts.cloudflaredBin});
       await next.start();
       if (this.stopped) {
         next.stop();
