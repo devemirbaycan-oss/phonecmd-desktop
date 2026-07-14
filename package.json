@@ -1,6 +1,6 @@
 {
   "name": "phonecmd-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "PhoneCMD desktop host — WebSocket server, E2E crypto, Cloudflare tunnel, command engine",
   "author": "PhoneCMD",
   "main": "dist/electron/main.js",
@@ -13,7 +13,7 @@
     "cli": "ts-node src/cli.ts",
     "dev:headless": "ts-node src/headless.ts",
     "dev:test-client": "ts-node src/test-client.ts",
-    "copy:renderer": "node -e \"require('fs').copyFileSync('src/electron/renderer.html','dist/electron/renderer.html')\"",
+    "copy:renderer": "node -e \"const fs=require('fs');fs.copyFileSync('src/electron/renderer.html','dist/electron/renderer.html');fs.copyFileSync('build/icon.png','dist/electron/icon.png')\"",
     "app": "tsc && npm run copy:renderer && electron dist/electron/main.js",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -45,6 +45,7 @@
   "build": {
     "appId": "com.phonecmd.desktop",
     "productName": "PhoneCMD",
+    "icon": "build/icon.png",
     "files": [
       "dist/**/*",
       "package.json"

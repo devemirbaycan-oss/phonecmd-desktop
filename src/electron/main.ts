@@ -81,6 +81,10 @@ function createWindow(): void {
     resizable: true,
     backgroundColor: '#0a0a0f', // matches the app's bg token
     title: 'PhoneCMD',
+    // The title-bar / taskbar icon. Without this the window shows Electron's
+    // default grey icon even though the installer icon is set. The PNG is copied
+    // next to the compiled main.js (see the build script / files glob).
+    icon: join(__dirname, 'icon.png'),
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,

@@ -15,15 +15,24 @@
 import {createServer} from 'net';
 
 /**
- * Can we bind this port on 127.0.0.1? Loopback is what cloudflared targets, so
- * this is the binding that actually matters for the tunnel path.
+ * Can we actually bind this port the way the WS server will — on 0.0.0.0 with
+ * exclusive ownership?
+ *
+ * The subtlety that bit us: our server binds 0.0.0.0, but the old check probed
+ * 127.0.0.1. On Windows a 127.0.0.1 bind SUCCEEDS even when 0.0.0.0 already holds
+ * the port (they're treated as distinct), so the probe reported "free", we
+ * returned that port, and the real 0.0.0.0 bind then failed with EADDRINUSE —
+ * leaving the app stuck on "starting". So probe the SAME address the server uses.
+ *
+ * `exclusive: true` also stops the probe itself from "sharing" a port that
+ * another process holds, which is what makes the check trustworthy.
  */
 export function isLoopbackPortFree(port: number): Promise<boolean> {
   return new Promise(resolve => {
     const srv = createServer();
     srv.once('error', () => resolve(false)); // EADDRINUSE → someone holds it
     srv.once('listening', () => srv.close(() => resolve(true)));
-    srv.listen(port, '127.0.0.1');
+    srv.listen({port, host: '0.0.0.0', exclusive: true});
   });
 }
 
