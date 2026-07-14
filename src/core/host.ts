@@ -121,6 +121,15 @@ export class HostCore extends EventEmitter {
       this.tunnel = new Tunnel({port, bin: this.opts.cloudflaredBin});
       try {
         await this.tunnel.start();
+        // cloudflared prints the URL BEFORE the edge is actually routing to us,
+        // so a freshly-captured URL can 404 for a second or two (or indefinitely
+        // under rate-limiting). Registering that dead URL is what left a real
+        // user's phone stuck "connecting → offline". Wait until the tunnel truly
+        // reaches our origin before trusting it.
+        const live = await this.waitForTunnelLive(this.tunnel.url!);
+        if (!live) {
+          throw new Error('tunnel URL never became routable');
+        }
         endpoint = this.tunnel.wssUrl()!;
         this.log(`tunnel up: ${endpoint}`);
         if (lan) {
@@ -292,6 +301,14 @@ export class HostCore extends EventEmitter {
         next.stop();
         return;
       }
+      // Same as the initial start: don't adopt a URL that doesn't route yet, or
+      // we'd re-register a dead relay and break pairing again.
+      if (!(await this.waitForTunnelLive(next.url!))) {
+        next.stop();
+        this.tunnel = null; // health tick will try again
+        this.log('respawned tunnel never became routable — will retry');
+        return;
+      }
       this.tunnel = next;
       const endpoint = next.wssUrl()!;
       this.log(`tunnel back up: ${endpoint}`);
@@ -320,16 +337,41 @@ export class HostCore extends EventEmitter {
    * heal. And a DNS/connection error / timeout is dead too. Short timeout so a
    * slow probe never stalls the interval.
    */
+  /**
+   * Poll the freshly-created tunnel until it actually routes to our origin (or
+   * we give up). cloudflared reports its URL before the edge connection is
+   * established, so this closes the window where we'd otherwise advertise a URL
+   * that 404s. Gives up after ~12s → caller falls back to LAN and keeps retrying.
+   */
+  private async waitForTunnelLive(httpsUrl: string, timeoutMs = 12_000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline && !this.stopped) {
+      if (await this.probeTunnel(httpsUrl)) {
+        return true;
+      }
+      await new Promise(r => setTimeout(r, 750));
+    }
+    return false;
+  }
+
   private async probeTunnel(httpsUrl: string): Promise<boolean> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 8_000);
     try {
-      const res = await fetch(httpsUrl, {method: 'HEAD', signal: ctrl.signal});
-      // 502/530 = Cloudflare can't reach our origin → tunnel to us is dead.
-      if (res.status === 502 || res.status === 530) {
-        return false;
+      const res = await fetch(httpsUrl, {method: 'GET', signal: ctrl.signal});
+      // Our server is a WebSocket endpoint: a plain HTTP GET to it returns 426
+      // (Upgrade Required). THAT is what "the tunnel reaches our origin" looks
+      // like — so treat 426 (and any 2xx) as alive.
+      if (res.status === 426 || (res.status >= 200 && res.status < 300)) {
+        return true;
       }
-      return true; // reached our origin (even a 4xx) → path is alive
+      // Everything else means the edge answered but our origin didn't:
+      //   • 502 / 530  — Cloudflare can't reach the origin
+      //   • 404        — the quick tunnel isn't routing to us (a real user hit
+      //                  this: the relay 404s and the phone can't connect)
+      //   • 1xxx / 5xx — Cloudflare error pages
+      // All of these are dead → respawn to mint a fresh, working tunnel.
+      return false;
     } catch {
       return false; // DNS failure / connection refused / timeout → dead
     } finally {
