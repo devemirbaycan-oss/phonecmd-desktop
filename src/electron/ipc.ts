@@ -56,4 +56,7 @@ export const CHANNEL = {
   restart: 'phonecmd:restart', // renderer → main
   setTtl: 'phonecmd:set-ttl', // renderer → main: change pairing expiry
   copy: 'phonecmd:copy', // renderer → main: copy text to the clipboard
+  version: 'phonecmd:version', // renderer → main: get app version
+  getAutoUpdate: 'phonecmd:get-auto-update', // renderer → main
+  setAutoUpdate: 'phonecmd:set-auto-update', // renderer → main
 } as const;

@@ -50,6 +50,14 @@
       }
       header img { width: 26px; height: 26px; border-radius: 7px; }
       header h1 { font-size: 15px; margin: 0; font-weight: 700; letter-spacing: .2px; }
+      #version {
+        font-size: 11px;
+        color: var(--muted, #8a8a99);
+        font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+        padding: 1px 6px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+      }
       .status {
         margin-left: auto;
         display: flex;
@@ -225,12 +233,30 @@
       @media (prefers-reduced-motion: reduce) {
         #splash .spinner { animation: none; }
       }
+
+      /* Settings toggle switch */
+      .toggle-row { align-items: center; }
+      .switch { position: relative; display: inline-block; width: 40px; height: 22px; flex: none; }
+      .switch input { opacity: 0; width: 0; height: 0; }
+      .slider {
+        position: absolute; cursor: pointer; inset: 0;
+        background: var(--surface-alt); border: 1px solid var(--border);
+        border-radius: 999px; transition: background 0.15s;
+      }
+      .slider::before {
+        content: ""; position: absolute; height: 16px; width: 16px;
+        left: 2px; top: 2px; background: #f2f2f7; border-radius: 50%;
+        transition: transform 0.15s;
+      }
+      .switch input:checked + .slider { background: var(--accent); border-color: var(--accent); }
+      .switch input:checked + .slider::before { transform: translateX(18px); }
     </style>
   </head>
   <body>
     <header>
       <img id="logo" alt="" />
       <h1>PhoneCMD</h1>
+      <span id="version" title="app version"></span>
       <div class="status">
         <span class="dot" id="statusDot"></span>
         <span id="statusText">starting…</span>
@@ -301,6 +327,23 @@
           <span class="n" id="usageLeft" style="color:var(--mute)"></span>
         </div>
         <div class="bar" id="usageBar"><i id="usageFill"></i></div>
+      </div>
+
+      <!-- Settings -->
+      <div class="card">
+        <h2>Settings</h2>
+        <div class="row toggle-row">
+          <div>
+            <span class="k">Automatic updates</span>
+            <div class="hint" style="text-align:left;margin-top:2px">
+              Install new versions in the background.
+            </div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="autoUpdateToggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
       </div>
 
       <!-- Log -->
@@ -490,6 +533,16 @@
       $('approveBtn').onclick = () => answer(true);
       $('rejectBtn').onclick = () => answer(false);
       $('restartBtn').onclick = () => window.phonecmd.restart();
+
+      // Show the running version (so you can tell which build you're on and see
+      // auto-update actually change it).
+      window.phonecmd.getVersion().then(v => { $('version').textContent = 'v' + v; });
+
+      // Auto-update toggle — reflect the saved preference, and persist changes.
+      window.phonecmd.getAutoUpdate().then(on => { $('autoUpdateToggle').checked = on; });
+      $('autoUpdateToggle').onchange = (e) => {
+        window.phonecmd.setAutoUpdate(e.target.checked);
+      };
 
       // Tell main we're ready so it starts the host (and we catch the qr event).
       window.phonecmd.ready();

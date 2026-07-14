@@ -15,6 +15,9 @@ const CHANNEL = {
   restart: 'phonecmd:restart',
   setTtl: 'phonecmd:set-ttl',
   copy: 'phonecmd:copy',
+  version: 'phonecmd:version',
+  getAutoUpdate: 'phonecmd:get-auto-update',
+  setAutoUpdate: 'phonecmd:set-auto-update',
 } as const;
 
 const api = {
@@ -43,6 +46,16 @@ const api = {
   /** Copy text (the keycode) to the system clipboard via main. */
   copy: (text: string): Promise<void> =>
     ipcRenderer.invoke(CHANNEL.copy, text),
+
+  /** The running app version (e.g. "0.1.6"). */
+  getVersion: (): Promise<string> => ipcRenderer.invoke(CHANNEL.version),
+
+  /** Whether auto-update is currently enabled (persisted preference). */
+  getAutoUpdate: (): Promise<boolean> => ipcRenderer.invoke(CHANNEL.getAutoUpdate),
+
+  /** Turn auto-update on/off. Returns the new value. */
+  setAutoUpdate: (enabled: boolean): Promise<boolean> =>
+    ipcRenderer.invoke(CHANNEL.setAutoUpdate, enabled),
 };
 
 contextBridge.exposeInMainWorld('phonecmd', api);

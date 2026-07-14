@@ -16,18 +16,36 @@
 
 import {app, dialog, BrowserWindow} from 'electron';
 import {autoUpdater} from 'electron-updater';
+import {loadSettings} from './settings';
 
 type Log = (msg: string) => void;
 
 let wired = false;
+let logFn: Log = () => {};
+let enabled = true;
 
 /**
- * Wire up and kick off an update check. Safe to call once, after app-ready.
- * Does nothing in dev (no packaged app / no update manifest to compare against).
+ * Enable/disable auto-update at runtime (from the settings toggle). When turned
+ * on, immediately checks; when off, no checks fire. Persisted separately by the
+ * settings store — this just reflects the live state.
+ */
+export function setAutoUpdateEnabled(on: boolean): void {
+  enabled = on;
+  logFn(`auto-update: ${on ? 'enabled' : 'disabled'}`);
+  if (on && wired && app.isPackaged) {
+    autoUpdater.checkForUpdates().catch(err => logFn(`auto-update: check failed (${err?.message ?? err})`));
+  }
+}
+
+/**
+ * Wire up and (if enabled) kick off an update check. Safe to call once, after
+ * app-ready. Does nothing in dev (no packaged app / no manifest to compare).
  */
 export function initAutoUpdate(getWindow: () => BrowserWindow | null, log: Log = () => {}): void {
   if (wired) return;
   wired = true;
+  logFn = log;
+  enabled = loadSettings().autoUpdate;
 
   // In dev there's no installer to update, and electron-updater throws if asked.
   if (!app.isPackaged) {
@@ -78,6 +96,11 @@ export function initAutoUpdate(getWindow: () => BrowserWindow | null, log: Log =
       autoUpdater.quitAndInstall();
     }
   });
+
+  if (!enabled) {
+    log('auto-update: disabled by user — not checking');
+    return;
+  }
 
   // Fire the check. Catch synchronously AND the returned promise — a rejection
   // here must not become an unhandled rejection that could take the app down.

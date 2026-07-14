@@ -26,7 +26,8 @@ import {encodeKeycode} from '../pairing/keycode';
 import {getUsage, FREE_DAILY_LIMIT} from '../usage/limit';
 import {PairRequest} from '../protocol';
 import {CHANNEL, ConnectedDevice} from './ipc';
-import {initAutoUpdate} from './updater';
+import {initAutoUpdate, setAutoUpdateEnabled} from './updater';
+import {loadSettings, saveSettings} from './settings';
 
 const PORT = Number(process.env.PHONECMD_PORT ?? 8787);
 const NO_TUNNEL = process.env.PHONECMD_NO_TUNNEL === '1';
@@ -244,6 +245,18 @@ app.whenReady().then(() => {
   // The renderer is sandboxed (no clipboard access), so copying goes through main.
   ipcMain.handle(CHANNEL.copy, (_e, text: string) => {
     clipboard.writeText(String(text ?? ''));
+  });
+
+  // Version — the UI shows it so you can tell which build you're on (and see
+  // auto-update actually change it).
+  ipcMain.handle(CHANNEL.version, () => app.getVersion());
+
+  // Auto-update toggle, persisted in ~/.phonecmd/settings.json.
+  ipcMain.handle(CHANNEL.getAutoUpdate, () => loadSettings().autoUpdate);
+  ipcMain.handle(CHANNEL.setAutoUpdate, (_e, enabled: boolean) => {
+    const {autoUpdate} = saveSettings({autoUpdate: !!enabled});
+    setAutoUpdateEnabled(autoUpdate); // start/stop the checker live
+    return autoUpdate;
   });
 
   app.on('activate', () => {
