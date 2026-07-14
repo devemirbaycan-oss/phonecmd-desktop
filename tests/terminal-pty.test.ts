@@ -36,10 +36,16 @@ describe('persistent PTY session', () => {
     await terminalCommands['term.start']({termId: 't1'}, cx);
     await wait(800);
 
-    // Set a var in the session, then read it back in a LATER command.
-    await terminalCommands['term.input']({termId: 't1', line: 'set PCMDVAR=alive42'}, cx);
+    // Set a var in the session, then read it back in a LATER command. Use the
+    // syntax of whatever shell the OS actually spawns — cmd.exe on Windows,
+    // POSIX sh elsewhere — so this passes on Linux/macOS CI, not just Windows.
+    const win = process.platform === 'win32';
+    const setVar = win ? 'set PCMDVAR=alive42' : 'PCMDVAR=alive42';
+    const readVar = win ? 'echo VAL=%PCMDVAR%' : 'echo VAL=$PCMDVAR';
+
+    await terminalCommands['term.input']({termId: 't1', line: setVar}, cx);
     await wait(600);
-    await terminalCommands['term.input']({termId: 't1', line: 'echo VAL=%PCMDVAR%'}, cx);
+    await terminalCommands['term.input']({termId: 't1', line: readVar}, cx);
     await wait(1200);
 
     expect(c.get()).toContain('VAL=alive42'); // state survived → same session
