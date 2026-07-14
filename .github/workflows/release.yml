@@ -1,0 +1,134 @@
+# Build the PhoneCMD desktop host for every platform and publish the installers
+# to a GitHub Release. Free: GitHub hosts the runners AND the download bandwidth
+# for public repos, so distribution costs nothing.
+#
+# Trigger by pushing a tag:
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Note on signing: the installers are UNSIGNED (a Windows cert is ~$300/yr, an
+# Apple account $99/yr). Windows shows "Windows protected your PC" — users click
+# More info → Run anyway. macOS Gatekeeper blocks it harder: right-click → Open.
+# The download page explains both.
+
+name: Release desktop app
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch: # lets you build from the Actions tab without tagging
+
+permissions:
+  contents: write # needed to create the Release and upload assets
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false # one platform failing shouldn't sink the others
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: 'release/*.exe'
+          - os: macos-latest
+            artifact: 'release/*.dmg'
+          - os: ubuntu-latest
+            artifact: 'release/*.AppImage'
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # node-pty is a native module. Its shipped prebuilds target Node's ABI, but
+      # Electron has a different one, so @electron/rebuild MUST recompile it from
+      # source — which needs a C++ toolchain. The GitHub runners have one
+      # (Windows: VS 2022; macOS: Xcode CLT; Linux: gcc), which is exactly why we
+      # build here rather than on a dev laptop.
+      #
+      # This matters: if node-pty fails to load, the app silently falls back to
+      # piped shells and LOSES persistent interactive sessions — the core feature.
+      # The verify step below fails the build rather than shipping that.
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch cloudflared binaries
+        # The app spawns its own cloudflared, so it's bundled — users install
+        # nothing. Only this runner's platform is needed.
+        run: node scripts/fetch-cloudflared.mjs --this-platform-only
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build installer
+        # electron-builder is invoked directly: `npm run dist` would re-run
+        # fetch:cloudflared for ALL platforms, and macOS/Windows assets aren't
+        # available on every runner.
+        run: |
+          npm run prepack:app
+          npx electron-builder --publish never
+        env:
+          # Don't let electron-builder try to code-sign (we have no certs).
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Verify the installer was actually produced
+        shell: bash
+        # electron-builder can exit 0 having built nothing useful. Don't publish
+        # an empty release.
+        run: |
+          shopt -s nullglob
+          files=(release/*.exe release/*.dmg release/*.AppImage)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::no installer in release/"
+            ls -la release/ || true
+            exit 1
+          fi
+          for f in "${files[@]}"; do echo "built: $f ($(du -h "$f" | cut -f1))"; done
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: phonecmd-${{ matrix.os }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error # fail loudly rather than publish an empty release
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    # Only publish a Release for real tags; workflow_dispatch just builds.
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            **Windows** — download the `.exe`. Windows will warn
+            "Windows protected your PC" because the installer isn't code-signed
+            (a certificate costs ~$300/yr). Click **More info → Run anyway**.
+
+            **macOS** — download the `.dmg`. It isn't notarized, so Gatekeeper
+            will block it: **right-click the app → Open → Open**.
+
+            **Linux** — download the `.AppImage`, then
+            `chmod +x` it and run it.
+
+            Nothing else to install — `cloudflared` is bundled.

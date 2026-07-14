@@ -1,0 +1,27 @@
+# Build output
+node_modules/
+dist/
+release/
+*.log
+
+# Vendored cloudflared — ~52 MB per platform. Fetched at build time by
+# `npm run fetch:cloudflared` (and by CI), so it must never be committed.
+resources/cloudflared/
+cloudflared*
+*.exe
+*.dmg
+*.AppImage
+
+# Secrets. Nothing in this package should hold one, but be explicit — the host's
+# keypair lives in ~/.phonecmd/identity.json (outside the repo), not here.
+.env
+.env.local
+*.pem
+*.p12
+*.keystore
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

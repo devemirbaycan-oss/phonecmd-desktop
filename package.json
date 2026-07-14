@@ -1,0 +1,79 @@
+{
+  "name": "phonecmd-desktop",
+  "version": "0.1.0",
+  "description": "PhoneCMD desktop host — WebSocket server, E2E crypto, Cloudflare tunnel, command engine",
+  "author": "PhoneCMD",
+  "main": "dist/electron/main.js",
+  "bin": {
+    "phonecmd": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "headless": "tsc && node dist/headless.js",
+    "cli": "ts-node src/cli.ts",
+    "dev:headless": "ts-node src/headless.ts",
+    "dev:test-client": "ts-node src/test-client.ts",
+    "copy:renderer": "node -e \"require('fs').copyFileSync('src/electron/renderer.html','dist/electron/renderer.html')\"",
+    "app": "tsc && npm run copy:renderer && electron dist/electron/main.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "fetch:cloudflared": "node scripts/fetch-cloudflared.mjs",
+    "prepack:app": "tsc && npm run copy:renderer",
+    "pack:dir": "npm run prepack:app && electron-builder --dir",
+    "dist": "npm run fetch:cloudflared && npm run prepack:app && electron-builder"
+  },
+  "dependencies": {
+    "libsodium-wrappers": "^0.7.13",
+    "node-pty": "^1.1.0",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/libsodium-wrappers": "^0.7.14",
+    "@types/node": "^20.14.0",
+    "@types/qrcode": "^1.5.5",
+    "@types/qrcode-terminal": "^0.12.2",
+    "@types/ws": "^8.5.10",
+    "electron": "^32.1.2",
+    "electron-builder": "^25.0.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.0",
+    "vitest": "^2.1.1"
+  },
+  "build": {
+    "appId": "com.phonecmd.desktop",
+    "productName": "PhoneCMD",
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "dist/electron/main.js"
+    },
+    "directories": {
+      "output": "release"
+    },
+    "extraResources": [
+      {
+        "from": "resources/cloudflared",
+        "to": "cloudflared",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Development"
+    }
+  }
+}

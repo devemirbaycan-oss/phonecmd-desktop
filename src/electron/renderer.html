@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
+    <title>PhoneCMD</title>
+    <style>
+      /* Tokens mirror mobile/src/theme.ts so the desktop, the phone, and the
+         website read as one product. The cyan→blue gradient is the logo's. */
+      :root {
+        --bg: #0a0a0f;
+        --surface: #13131b;
+        --surface-alt: #1a1a24;
+        --border: #26262f;
+        --border-strong: #33333f;
+        --text: #f2f2f7;
+        --dim: #a0a0b0;
+        --mute: #6b6b7a;
+        --accent: #6b8cff;
+        --accent-soft: rgba(107, 140, 255, .12);
+        --cyan: #22d3ee;
+        --grad: linear-gradient(135deg, #22d3ee 0%, #4b7bec 55%, #6b8cff 100%);
+        --ok: #3ecf8e;
+        --warn: #f5a623;
+        --danger: #ff6b6b;
+        --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        font-size: 14px;
+      }
+
+      /* ── header ─────────────────────────────────────────────── */
+      header {
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--surface);
+      }
+      header img { width: 26px; height: 26px; border-radius: 7px; }
+      header h1 { font-size: 15px; margin: 0; font-weight: 700; letter-spacing: .2px; }
+      .status {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12.5px;
+        color: var(--dim);
+      }
+      .dot {
+        width: 9px; height: 9px; border-radius: 50%;
+        background: var(--warn);
+        box-shadow: 0 0 0 3px rgba(245, 166, 35, .15);
+      }
+      .dot.ready { background: var(--ok); box-shadow: 0 0 0 3px rgba(62, 207, 142, .15); }
+      .dot.error { background: var(--danger); box-shadow: 0 0 0 3px rgba(255, 107, 107, .15); }
+
+      main { flex: 1; overflow-y: auto; padding: 18px; }
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 18px;
+        margin-bottom: 14px;
+      }
+      h2 {
+        font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+        color: var(--mute); margin: 0 0 12px; font-weight: 600;
+      }
+
+      /* ── pairing ────────────────────────────────────────────── */
+      .qr-wrap { text-align: center; }
+      .qr-wrap img {
+        width: 220px; height: 220px; border-radius: 12px;
+        background: #fff; padding: 9px;
+      }
+      .code {
+        font-family: var(--mono); font-size: 25px; letter-spacing: 7px;
+        text-align: center; margin-top: 12px; font-weight: 700;
+      }
+      .hint { text-align: center; color: var(--mute); font-size: 12.5px; margin-top: 6px; }
+
+      /* keycode — the copy/paste pairing path */
+      .kc-label {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 7px;
+      }
+      .kc-box {
+        font-family: var(--mono); font-size: 11px; line-height: 1.55;
+        color: var(--dim); background: var(--bg);
+        border: 1px solid var(--border); border-radius: 9px;
+        padding: 10px 12px; word-break: break-all;
+        max-height: 76px; overflow-y: auto; user-select: text;
+      }
+
+      /* ── status panel ───────────────────────────────────────── */
+      .row {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px; padding: 8px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .row:last-child { border-bottom: none; }
+      .row .k { color: var(--mute); font-size: 12.5px; flex: none; }
+      .row .v {
+        font-family: var(--mono); font-size: 11.5px; color: var(--dim);
+        text-align: right; word-break: break-all;
+      }
+      .row .v.on { color: var(--ok); }
+      .row .v.off { color: var(--mute); }
+
+      /* devices */
+      .dev {
+        display: flex; align-items: center; gap: 9px;
+        padding: 9px 0; border-bottom: 1px solid var(--border);
+      }
+      .dev:last-child { border-bottom: none; }
+      .dev .d { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+      .dev .n { font-weight: 600; font-size: 13px; }
+      .dev .t { margin-left: auto; color: var(--mute); font-size: 11.5px; font-family: var(--mono); }
+      .empty { color: var(--mute); font-size: 12.5px; padding: 4px 0; }
+
+      /* usage bar */
+      .usage-top {
+        display: flex; justify-content: space-between; align-items: baseline;
+        margin-bottom: 8px;
+      }
+      .usage-top .n { font-family: var(--mono); font-size: 13px; color: var(--dim); }
+      .bar {
+        height: 6px; border-radius: 99px; background: var(--surface-alt);
+        overflow: hidden;
+      }
+      .bar > i {
+        display: block; height: 100%; width: 0%;
+        background: var(--grad); border-radius: 99px;
+        transition: width .3s ease;
+      }
+      .bar.full > i { background: var(--danger); }
+
+      /* ── log ────────────────────────────────────────────────── */
+      #log {
+        font-family: var(--mono); font-size: 11.5px; line-height: 1.75;
+        max-height: 150px; overflow-y: auto;
+      }
+      #log .line { color: var(--mute); }
+      #log .line b { color: var(--text); font-weight: 600; }
+
+      /* ── controls ───────────────────────────────────────────── */
+      .ttl-row {
+        display: flex; align-items: center; gap: 9px;
+        margin-top: 14px; font-size: 12.5px; color: var(--mute);
+        justify-content: center;
+      }
+      select {
+        background: var(--bg); color: var(--text);
+        border: 1px solid var(--border); border-radius: 8px;
+        padding: 6px 10px; font-size: 12.5px; cursor: pointer;
+      }
+      .btn {
+        border: 1px solid var(--border); border-radius: 9px;
+        padding: 8px 14px; font-size: 13px; font-weight: 600;
+        cursor: pointer; background: var(--surface-alt); color: var(--text);
+        transition: border-color .15s, filter .15s;
+      }
+      .btn:hover { border-color: var(--accent); }
+      .btn.primary {
+        background: var(--grad); color: #fff; border-color: transparent;
+      }
+      .btn.primary:hover { filter: brightness(1.07); }
+      .btn.danger { background: var(--danger); color: #fff; border-color: transparent; }
+      .btn.small { padding: 5px 11px; font-size: 12px; }
+      .btn.copied { border-color: var(--ok); color: var(--ok); }
+      .actions { display: flex; gap: 10px; }
+      .actions .btn { flex: 1; }
+
+      /* ── approval modal ─────────────────────────────────────── */
+      #modal {
+        position: fixed; inset: 0; background: rgba(0, 0, 0, .66);
+        display: none; align-items: center; justify-content: center; padding: 24px;
+      }
+      #modal.show { display: flex; }
+      .modal-card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 16px; padding: 24px; max-width: 340px; width: 100%;
+        text-align: center;
+      }
+      .modal-card h3 { margin: 0 0 6px; font-size: 17px; }
+      .modal-card p { color: var(--dim); font-size: 14px; margin: 0 0 20px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <img id="logo" alt="" />
+      <h1>PhoneCMD</h1>
+      <div class="status">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">starting…</span>
+      </div>
+    </header>
+
+    <main>
+      <!-- Pairing: QR + code -->
+      <div class="card qr-wrap">
+        <img id="qrImg" alt="pairing QR" />
+        <div class="code" id="pairCode">------</div>
+        <div class="hint">Scan with the PhoneCMD app</div>
+        <div class="ttl-row">
+          <label for="ttlSelect">Pairing expires:</label>
+          <select id="ttlSelect"></select>
+        </div>
+      </div>
+
+      <!-- Pairing: the copy/paste keycode -->
+      <div class="card">
+        <div class="kc-label">
+          <h2 style="margin:0">or paste this keycode</h2>
+          <button class="btn small" id="copyBtn">Copy</button>
+        </div>
+        <div class="kc-box" id="keycode">…</div>
+        <div class="hint" style="text-align:left;margin-top:8px">
+          Works from anywhere — no IP, port, or key to type.
+        </div>
+      </div>
+
+      <!-- Connection status -->
+      <div class="card">
+        <h2>Connection</h2>
+        <div class="row">
+          <span class="k">Relay</span>
+          <span class="v" id="relayVal">—</span>
+        </div>
+        <div class="row">
+          <span class="k">LAN direct</span>
+          <span class="v" id="lanVal">—</span>
+        </div>
+        <div class="row">
+          <span class="k">Discoverable</span>
+          <span class="v" id="rvVal">—</span>
+        </div>
+      </div>
+
+      <!-- Paired devices -->
+      <div class="card">
+        <h2>Paired devices</h2>
+        <div id="devices"><div class="empty">No devices yet — scan the QR above.</div></div>
+      </div>
+
+      <!-- Free-tier usage -->
+      <div class="card">
+        <h2>Today's usage (free tier)</h2>
+        <div class="usage-top">
+          <span class="n" id="usageText">0 / 10 messages</span>
+          <span class="n" id="usageLeft" style="color:var(--mute)"></span>
+        </div>
+        <div class="bar" id="usageBar"><i id="usageFill"></i></div>
+      </div>
+
+      <!-- Log -->
+      <div class="card">
+        <h2>Session log</h2>
+        <div id="log"></div>
+      </div>
+
+      <div class="actions">
+        <button class="btn" id="restartBtn">New pairing code</button>
+      </div>
+    </main>
+
+    <div id="modal">
+      <div class="modal-card">
+        <h3 id="modalTitle">Pairing request</h3>
+        <p id="modalBody"></p>
+        <div class="actions">
+          <button class="btn danger" id="rejectBtn">Reject</button>
+          <button class="btn primary" id="approveBtn">Approve</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const logEl = $('log');
+      let currentRequestId = null;
+      let currentKeycode = '';
+
+      // Logo (inlined: the CSP allows data: images only).
+      $('logo').src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAt1BMVEUBDi4BDCoKChAJChQBDzEBEDICEC8KCg8BDSwBDjAABCEBEzQABicCHkAEVXcDFTgCRm0Bp/4BSoEBABoBnv8BPYMBPnIBmvIBp+wFm8YO4f8Q5/8P0vIG1v8CZOgCeuwCx/4Cjf8CVsYBkOIEt+YCuvkCgvgGZ4gBL2ABJ0sBgeMBWIcBgMUKyPEBapkBZrKvsbre3uIBc94CYIkBdKQ8RV0nMEv29vcCTqoBhNIDav+SlqNeZnmlctkMAAAACXBIWXMAAAPoAAAD6AG1e1JrAAADoUlEQVRYhe2WaXPaMBCGV61WWR0OGDsUnNBCAgRycCTkavv/f1dnJdtAg5ym/dCZTt8hCQzWk70kvXD0h4L/gKN/qgYf3qdXgA+CRSSIBbWU4hcAEADVEh8PAGhvqWZJqaUXf/AYj/olAEtDydBa8+eA4GcoBgDaC0BridsQyq+YEAdUCsGjlIgYGPs5xAHET2gPQL+6JKCsQyCIAiCsLitXLS+zqAlRgAj/Xyslffo1wxdCa1XVIZ4ClKVHtPtCzsCrnIgDAAo1UFojuZ9FFiVWAFCHARAqIKVL2sf7as8dZ1O2U8ciAPLtd5e3xSmrKIpiwBoOJxvUW0JTBBrN5WlRnJW6ZU0mw+FwIyxiyELpKECBFPOzYtxO9tXuTyZzJyEQuI4HuwAAgOa4OJtlJHZEJpv3Jh1n0RFKGQUAy5rL0z6hqoUKxfF4fDuY9Hq9m7lACUoDRGuADABeVxPc8aC/WFxf3y8WvYsWSd3YRusjUMrVCKDxJsuSxaadZfO0azCWAnERdQCAfRDCBgDZcdvhfLHpKISLTjMAGFD0gex6pVyIAey4bVBkmVFgPUA3A+6LPinxuF4/Cl4vA0AhogJkgGwaJG3N/aBPCoVZPSXEWZQAHwwDLPexqYj3gz4oMN+fvvEuUpJsbw/wdgqDPijx7em7eXx4eOQIdgBXHhAfZS3RXA9vgFqrB6NW6/XqAEA2dEFDAChlHCrballuYwXQgFcnIYXoJKoACKPIR9d7Adqa68lLtRcQlUJo9drVSLwNkNZ00tTvRr7A+JV10sRPBAPuTgz6bkVHGSn5lF50d86CTrp08hcBitvgOmmaftoqfVECdwGNewH4TO1e5Ckrz/Ocfy1bZVEAP4cI1OEIKFyq6FqzLusmz1+63e4yXwq5A/AnexQATADnnHHZMs87R86Y59HM91ECNQO8+NTkyyxJZlej0U2SJCKZ3iX+cDSzrzOHsnGQVLgTYTmajljT6fTEnIy+nHt9PUeQzYME3tiAvZt+KTV9FtQ9/+z1nAgJcQBVZdQSsFULpXUUrmkheHH0aiNfBL7EpQbyb/gtIlregXxml38jc0BlFfln6y6Qr7RwLVYW47BHosojeYDecyjBpGxN0psmSweTs29xtjYt6pGgIvjcPcFTKqNXxR+JQNQ2q+pFrR2T6F1ig1OFmsE2S0ssfaofvxJABA1Wl7Z2tbaWfnFZovKZ14Cjj+/Sa7v/u4LfXvkfUOvvF/EHqrCB7vHq69wAAAAASUVORK5CYII=';
+
+      function addLog(msg) {
+        const div = document.createElement('div');
+        div.className = 'line';
+        div.innerHTML = msg;
+        logEl.appendChild(div);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      // The host only emits lifecycle status (starting/tunneling/ready/stopped).
+      // Pairing and device counts arrive on other channels, so we remember the
+      // last lifecycle status and let those override the *text* — otherwise the
+      // header keeps claiming "waiting for device" while a pairing prompt is up.
+      let hostStatus = 'starting';
+      let awaitingApproval = false;
+      let deviceCount = 0;
+
+      function setStatus(status, detail) {
+        if (status) hostStatus = status;
+        const dot = $('statusDot');
+        dot.className = 'dot';
+        let text = hostStatus;
+        if (hostStatus === 'error') { dot.classList.add('error'); text = 'error' + (detail ? ': ' + detail : ''); }
+        else if (hostStatus === 'tunneling') { text = 'opening tunnel…'; }
+        else if (hostStatus === 'stopped') { text = 'stopped'; }
+        else if (hostStatus === 'ready') {
+          dot.classList.add('ready');
+          if (awaitingApproval) text = 'pairing request — waiting for you to approve';
+          else if (deviceCount === 1) text = '1 device connected';
+          else if (deviceCount > 1) text = deviceCount + ' devices connected';
+          else text = 'ready — waiting for device';
+        }
+        $('statusText').textContent = text;
+      }
+
+      /** Shorten a long ws URL so it fits the status row. */
+      function shortUrl(u) {
+        if (!u) return '—';
+        return u.replace(/^wss?:\/\//, '');
+      }
+
+      function renderDevices(devices) {
+        const el = $('devices');
+        if (!devices.length) {
+          el.innerHTML = '<div class="empty">No devices yet — scan the QR above.</div>';
+          return;
+        }
+        el.innerHTML = '';
+        for (const d of devices) {
+          const row = document.createElement('div');
+          row.className = 'dev';
+          const time = new Date(d.since).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+          const dot = document.createElement('span'); dot.className = 'd';
+          const name = document.createElement('span'); name.className = 'n'; name.textContent = d.deviceName;
+          const since = document.createElement('span'); since.className = 't'; since.textContent = 'since ' + time;
+          row.append(dot, name, since);
+          el.appendChild(row);
+        }
+      }
+
+      function renderUsage(u) {
+        const pct = u.limit ? Math.min(100, (u.used / u.limit) * 100) : 0;
+        $('usageText').textContent = u.used + ' / ' + u.limit + ' messages';
+        $('usageLeft').textContent = u.remaining > 0 ? u.remaining + ' left' : 'limit reached';
+        $('usageFill').style.width = pct + '%';
+        $('usageBar').classList.toggle('full', u.remaining === 0);
+      }
+
+      window.phonecmd.onEvent((type, data) => {
+        if (type === 'status') setStatus(data.status, data.detail);
+        else if (type === 'log') addLog(data.message);
+        else if (type === 'qr') {
+          $('qrImg').src = data.qrDataUrl;
+          $('pairCode').textContent = data.payload.pairingCode;
+          currentKeycode = data.keycode;
+          $('keycode').textContent = data.keycode;
+          // Connection panel
+          $('relayVal').textContent = shortUrl(data.payload.endpoint);
+          $('relayVal').className = 'v on';
+          const lan = data.payload.lanEndpoint;
+          $('lanVal').textContent = lan ? shortUrl(lan) : 'not on a LAN';
+          $('lanVal').className = 'v ' + (lan ? 'on' : 'off');
+          $('rvVal').textContent = 'registered — survives tunnel restarts';
+          $('rvVal').className = 'v on';
+        }
+        else if (type === 'paired') addLog('<b>' + data.deviceName + '</b> paired ✅');
+        else if (type === 'disconnected') addLog('<b>' + data.deviceName + '</b> disconnected');
+        else if (type === 'devices') {
+          renderDevices(data.devices);
+          deviceCount = data.devices.length;
+          setStatus();
+        }
+        else if (type === 'usage') renderUsage(data);
+        else if (type === 'pair-request') {
+          currentRequestId = data.requestId;
+          $('modalBody').textContent =
+            '"' + data.req.deviceName + '" wants to pair. Approve this device?';
+          $('modal').classList.add('show');
+          awaitingApproval = true;
+          setStatus();
+        }
+        else if (type === 'pair-cancelled') {
+          // The request expired host-side; drop the stale prompt.
+          if (currentRequestId === data.requestId) {
+            currentRequestId = null;
+            $('modal').classList.remove('show');
+            awaitingApproval = false;
+            setStatus();
+            addLog('pairing request expired — not approved in time');
+          }
+        }
+        else if (type === 'ttl-options') {
+          const sel = $('ttlSelect');
+          sel.innerHTML = '';
+          for (const o of data.options) {
+            const opt = document.createElement('option');
+            opt.value = o.id;
+            opt.textContent = o.label;
+            if (o.id === data.current) opt.selected = true;
+            sel.appendChild(opt);
+          }
+        }
+      });
+
+      $('copyBtn').onclick = () => {
+        if (!currentKeycode) return;
+        window.phonecmd.copy(currentKeycode);
+        const b = $('copyBtn');
+        b.textContent = 'Copied ✓';
+        b.classList.add('copied');
+        setTimeout(() => { b.textContent = 'Copy'; b.classList.remove('copied'); }, 1600);
+      };
+
+      $('ttlSelect').onchange = (e) => window.phonecmd.setTtl(e.target.value);
+
+      function answer(approved) {
+        if (currentRequestId) {
+          window.phonecmd.approvePairing(currentRequestId, approved);
+          currentRequestId = null;
+        }
+        $('modal').classList.remove('show');
+        awaitingApproval = false;
+        setStatus();
+      }
+      $('approveBtn').onclick = () => answer(true);
+      $('rejectBtn').onclick = () => answer(false);
+      $('restartBtn').onclick = () => window.phonecmd.restart();
+
+      // Tell main we're ready so it starts the host (and we catch the qr event).
+      window.phonecmd.ready();
+    </script>
+  </body>
+</html>
