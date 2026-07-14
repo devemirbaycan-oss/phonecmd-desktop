@@ -16,7 +16,10 @@ import {promises as fsp, readFileSync, writeFileSync, mkdirSync} from 'fs';
 import {join} from 'path';
 import {homedir} from 'os';
 
-export const FREE_DAILY_LIMIT = 10;
+// Raised from 10 to 500 so the cap effectively never fires during real use /
+// testing, while the free-tier accounting stays intact. Lower it (or wire a
+// subscription-gated value) when the paid tier goes live.
+export const FREE_DAILY_LIMIT = 500;
 
 const DIR = join(homedir(), '.phonecmd');
 const FILE = join(DIR, 'usage.json');
