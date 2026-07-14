@@ -42,14 +42,19 @@ describe('isLoopbackPortFree', () => {
 
 describe('pickFreePort', () => {
   it('returns the preferred port when it is free', async () => {
-    expect(await pickFreePort(45873)).toBe(45873);
+    // Bind a port to learn one that's definitely free, then release it, so we
+    // don't hardcode a number another test/process might hold on the CI runner.
+    const free = await pickFreePort(45873);
+    expect(await pickFreePort(free)).toBe(free);
   });
 
   it('skips a squatted port and returns the next free one', async () => {
-    await holdPort(45874);
-    // 45874 is taken → must move on rather than returning it and then failing to
-    // bind (which is what left the app stuck on "starting").
-    const port = await pickFreePort(45874);
-    expect(port).toBeGreaterThan(45874);
+    // Find a genuinely-free base port first, hold it, then confirm pickFreePort
+    // moves past it. Using a discovered port (not a hardcoded 45874) avoids the
+    // flaky EADDRINUSE when a prior test's port hasn't fully released on Linux.
+    const base = await pickFreePort(45900);
+    await holdPort(base);
+    const port = await pickFreePort(base);
+    expect(port).toBeGreaterThan(base);
   });
 });
