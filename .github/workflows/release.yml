@@ -58,13 +58,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential
 
       # node-pty is recompiled for Electron's ABI (its prebuilds aren't N-API, so
-      # they don't fit Electron). That rebuild uses node-gyp, which on the current
-      # runners breaks two ways:
-      #   • Python 3.12 (runner default) removed `distutils`, which the bundled
-      #     node-gyp imports → "No module named 'distutils'". Pin Python 3.11.
-      #   • The bundled node-gyp predates VS 2022 detection → "Could not find any
-      #     Visual Studio installation". A modern node-gyp (installed below) fixes
-      #     it. Applies to ALL platforms, not just Windows.
+      # they don't fit Electron). That compile uses node-gyp, and Python 3.12
+      # (the runner default) removed `distutils`, which node-gyp imports → pin 3.11.
       - name: Set up Python 3.11 for node-gyp
         uses: actions/setup-python@v5
         with:
@@ -73,17 +68,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Install a modern node-gyp AFTER npm ci (so it isn't overwritten) and make
-      # @electron/rebuild use it. The bundled node-gyp only probes VS 2013/2015
-      # and can't see the runner's VS 2022 → "Could not find any Visual Studio".
-      # node-gyp@10 detects VS 2022 and doesn't need distutils.
+      # Rebuild node-pty for Electron's ABI up front so failures are obvious.
+      #
+      # Use @electron/rebuild v4 specifically: v3.x bundles its OWN old node-gyp
+      # (in @electron/rebuild/node_modules) that only probes VS 2013/2015 and
+      # can't see the runner's VS 2022 — "Could not find any Visual Studio". v4
+      # bundles node-gyp@12, which detects VS 2022. (Overriding npm_config_node_gyp
+      # doesn't help — @electron/rebuild uses its nested copy regardless.)
       - name: Rebuild native modules for Electron
-        run: npx --yes @electron/rebuild@^3.6 -f -w node-pty
-        env:
-          # A global install; the path is resolved by npm, not a shell subshell,
-          # so this works identically on Windows/macOS/Linux.
-          npm_config_node_gyp: ${{ github.workspace }}/node_modules/.bin/node-gyp
-          GYP_MSVS_VERSION: '2022'
+        run: npx --yes @electron/rebuild@^4 -f -w node-pty
 
       - name: Fetch cloudflared binaries
         # The app spawns its own cloudflared, so it's bundled — users install
