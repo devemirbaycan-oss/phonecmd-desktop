@@ -1,6 +1,6 @@
 {
   "name": "phonecmd-desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "PhoneCMD desktop host — WebSocket server, E2E crypto, Cloudflare tunnel, command engine",
   "author": "PhoneCMD",
   "main": "dist/electron/main.js",
@@ -24,6 +24,7 @@
     "dist": "npm run fetch:cloudflared && npm run prepack:app && electron-builder"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "libsodium-wrappers": "^0.7.13",
     "node-pty": "^1.1.0",
     "qrcode": "^1.5.4",
@@ -46,6 +47,13 @@
     "appId": "com.phonecmd.desktop",
     "productName": "PhoneCMD",
     "icon": "build/icon.png",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "devemirbaycan-oss",
+        "repo": "phonecmd-desktop"
+      }
+    ],
     "files": [
       "dist/**/*",
       "package.json"

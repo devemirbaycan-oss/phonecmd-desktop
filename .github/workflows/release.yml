@@ -25,13 +25,25 @@ jobs:
     strategy:
       fail-fast: false # one platform failing shouldn't sink the others
       matrix:
+        # Each platform ships its installer AND its electron-updater manifest
+        # (latest.yml / latest-mac.yml / latest-linux.yml + the .blockmap for
+        # differential downloads). The manifest is what an installed app fetches
+        # to notice a newer release — without it, auto-update can't work.
         include:
           - os: windows-latest
-            artifact: 'release/*.exe'
+            artifact: |
+              release/*.exe
+              release/*.exe.blockmap
+              release/latest.yml
           - os: macos-latest
-            artifact: 'release/*.dmg'
+            artifact: |
+              release/*.dmg
+              release/*.dmg.blockmap
+              release/latest-mac.yml
           - os: ubuntu-latest
-            artifact: 'release/*.AppImage'
+            artifact: |
+              release/*.AppImage
+              release/latest-linux.yml
 
     runs-on: ${{ matrix.os }}
 

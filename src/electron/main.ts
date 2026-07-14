@@ -26,6 +26,7 @@ import {encodeKeycode} from '../pairing/keycode';
 import {getUsage, FREE_DAILY_LIMIT} from '../usage/limit';
 import {PairRequest} from '../protocol';
 import {CHANNEL, ConnectedDevice} from './ipc';
+import {initAutoUpdate} from './updater';
 
 const PORT = Number(process.env.PHONECMD_PORT ?? 8787);
 const NO_TUNNEL = process.env.PHONECMD_NO_TUNNEL === '1';
@@ -203,6 +204,10 @@ async function startHost(): Promise<void> {
 app.whenReady().then(() => {
   dbg('app ready — creating window');
   createWindow();
+
+  // Check GitHub Releases for a newer version and install it in the background.
+  // Best-effort: never blocks or breaks startup (see updater.ts).
+  initAutoUpdate(() => win, dbg);
 
   // Renderer signals it's ready → send the TTL options, then start the host.
   ipcMain.handle('phonecmd:ready', async () => {
