@@ -23,6 +23,20 @@ function collector() {
 
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+/**
+ * Wait until `check()` is true, or give up after `timeout`. Fixed sleeps flake
+ * on loaded CI runners (a slow macOS box needs longer than a dev laptop to
+ * spawn a shell and echo), so poll for the actual condition instead.
+ */
+async function until(check: () => boolean, timeout = 12_000, step = 50) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (check()) return true;
+    await wait(step);
+  }
+  return false;
+}
+
 describe('persistent PTY session', () => {
   it('reports a real PTY is available in this environment', () => {
     // On dev/CI with the native build present this is true; the code still works
@@ -34,7 +48,8 @@ describe('persistent PTY session', () => {
     const c = collector();
     const cx = ctx(c.push);
     await terminalCommands['term.start']({termId: 't1'}, cx);
-    await wait(800);
+    // Wait for the shell prompt to actually appear, not a guessed delay.
+    await until(() => c.get().length > 0);
 
     // Set a var in the session, then read it back in a LATER command. Use the
     // syntax of whatever shell the OS actually spawns — cmd.exe on Windows,
@@ -44,9 +59,10 @@ describe('persistent PTY session', () => {
     const readVar = win ? 'echo VAL=%PCMDVAR%' : 'echo VAL=$PCMDVAR';
 
     await terminalCommands['term.input']({termId: 't1', line: setVar}, cx);
-    await wait(600);
+    await wait(300);
     await terminalCommands['term.input']({termId: 't1', line: readVar}, cx);
-    await wait(1200);
+    // Poll for the resolved value, however slow the runner is.
+    await until(() => c.get().includes('VAL=alive42'));
 
     expect(c.get()).toContain('VAL=alive42'); // state survived → same session
     expect(c.exited).toBe(false); // shell did NOT die after the first command

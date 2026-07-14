@@ -57,6 +57,13 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y build-essential
 
+      # Windows: make node-gyp find the runner's Visual Studio C++ toolchain,
+      # which it otherwise fails to auto-detect ("Could not find any Visual
+      # Studio installation").
+      - name: Set up MSBuild (Windows)
+        if: runner.os == 'Windows'
+        uses: microsoft/setup-msbuild@v2
+
       - name: Install dependencies
         run: npm ci
 
@@ -81,6 +88,11 @@ jobs:
         env:
           # Don't let electron-builder try to code-sign (we have no certs).
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          # node-pty is recompiled for Electron's ABI, so node-gyp must find the
+          # runner's Visual Studio. windows-latest ships VS 2022 with the C++
+          # workload, but node-gyp doesn't auto-detect it — point it there.
+          # (No-op on macOS/Linux.)
+          GYP_MSVS_VERSION: '2022'
 
       - name: Verify the installer was actually produced
         shell: bash

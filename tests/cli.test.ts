@@ -48,7 +48,8 @@ describe('LocalClient — in-process dispatch', () => {
 
   it('runs a shell command and captures its output', async () => {
     const c = new LocalClient();
-    const out = await c.run('echo cli-run-marker', {idleMs: 400, maxMs: 15_000});
+    // idleMs generous enough for a loaded CI runner to spawn a shell and echo.
+    const out = await c.run('echo cli-run-marker', {idleMs: 1500, maxMs: 15_000});
     await c.stop();
     expect(out).toContain('cli-run-marker');
   }, 20_000);
