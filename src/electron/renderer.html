@@ -36,6 +36,7 @@
         display: flex;
         flex-direction: column;
         font-size: 14px;
+        position: relative; /* positioning context for #splash */
       }
 
       /* ── header ─────────────────────────────────────────────── */
@@ -195,6 +196,35 @@
       }
       .modal-card h3 { margin: 0 0 6px; font-size: 17px; }
       .modal-card p { color: var(--dim); font-size: 14px; margin: 0 0 20px; }
+      /* Splash / loading overlay — covers the pairing UI until the QR is ready. */
+      #splash {
+        position: absolute;
+        inset: 56px 0 0 0; /* below the header */
+        z-index: 20;
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        text-align: center;
+        padding: 24px;
+      }
+      #splash.hidden { display: none; }
+      #splash .spinner {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: 3px solid var(--accent-soft);
+        border-top-color: var(--accent);
+        animation: spin 0.9s linear infinite;
+      }
+      #splashText { color: var(--text); font-size: 15px; font-weight: 600; }
+      #splashSub { color: var(--muted, #8a8a99); font-size: 12.5px; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) {
+        #splash .spinner { animation: none; }
+      }
     </style>
   </head>
   <body>
@@ -206,6 +236,15 @@
         <span id="statusText">starting…</span>
       </div>
     </header>
+
+    <!-- Splash: shown while the host binds the port and opens/verifies the
+         tunnel, so the user sees a clean loading state instead of a broken-image
+         QR and an empty keycode. Hidden the moment the real QR arrives. -->
+    <div id="splash">
+      <div class="spinner"></div>
+      <div id="splashText">Starting…</div>
+      <div id="splashSub">Setting up your secure connection</div>
+    </div>
 
     <main>
       <!-- Pairing: QR + code -->
@@ -362,10 +401,20 @@
         $('usageBar').classList.toggle('full', u.remaining === 0);
       }
 
+      // Keep the splash text in step with the host's startup phase.
+      function updateSplash(status) {
+        const el = $('splashText');
+        if (!el) return;
+        if (status === 'starting') el.textContent = 'Starting…';
+        else if (status === 'tunneling') el.textContent = 'Opening secure tunnel…';
+      }
+
       window.phonecmd.onEvent((type, data) => {
-        if (type === 'status') setStatus(data.status, data.detail);
+        if (type === 'status') { setStatus(data.status, data.detail); updateSplash(data.status); }
         else if (type === 'log') addLog(data.message);
         else if (type === 'qr') {
+          // The QR is ready → reveal the real pairing UI.
+          $('splash').classList.add('hidden');
           $('qrImg').src = data.qrDataUrl;
           $('pairCode').textContent = data.payload.pairingCode;
           currentKeycode = data.keycode;
