@@ -29,12 +29,16 @@ const HISTORY_FILE = join(DIR, 'history.log');
 const PROFILES_FILE = join(DIR, 'profiles.json');
 const MAX_HISTORY_LINES = 1000;
 
+/** How long to wait before writing the submit-CR after the line's text, so a
+ *  TUI's paste heuristic sees the Enter as a standalone keystroke (see input). */
+const ENTER_DELAY_MS = 20;
+
 type PushFn = (kind: 'term.output' | 'term.exit', data: unknown) => void;
 
 // ── PTY backend (node-pty) with a piped fallback ────────────────────────────
 // A minimal common surface both backends implement, so the Terminal class
 // doesn't care which is in use.
-interface ShellBackend {
+export interface ShellBackend {
   write(data: string): void;
   resize(cols: number, rows: number): void;
   kill(signal?: string): void;
@@ -103,10 +107,19 @@ function spawnShell(cwd: string): ShellBackend {
 }
 
 /** One persistent shell SESSION (PTY-backed), streaming output to the phone. */
-class Terminal {
+export class Terminal {
   private shell: ShellBackend | null = null;
+  // Test seam: inject a fake backend so unit tests can observe writes without
+  // spawning a real shell. Production leaves this undefined → spawnShell().
+  private spawn: (cwd: string) => ShellBackend;
 
-  constructor(readonly termId: string, private push: PushFn) {}
+  constructor(
+    readonly termId: string,
+    private push: PushFn,
+    spawn: (cwd: string) => ShellBackend = spawnShell,
+  ) {
+    this.spawn = spawn;
+  }
 
   /** Update the push channel (a reconnect brings a new one). */
   setPush(push: PushFn) {
@@ -123,7 +136,7 @@ class Terminal {
     }
     const startCwd = cwd || homedir();
     try {
-      this.shell = spawnShell(startCwd);
+      this.shell = this.spawn(startCwd);
     } catch (err) {
       this.push('term.output', {
         termId: this.termId,
@@ -142,14 +155,37 @@ class Terminal {
     return {cwd: startCwd};
   }
 
-  /** Send a line to the SESSION. Uses \r so a PTY treats it as Enter. */
+  /**
+   * Send a line to the SESSION as if the user typed it and pressed Enter.
+   *
+   * The Enter (CR) is written as its OWN event, a short beat AFTER the text —
+   * not appended to it. Full-screen TUIs (Codex, Claude Code, …) run with
+   * bracketed-paste mode on and use a burst/timing heuristic: a run of text
+   * arriving with a trailing CR in one read is treated as *pasted* content, so
+   * the CR lands as a newline INSIDE the composer instead of submitting, and the
+   * message just sits in the input box unsent (the "Codex doesn't respond" bug).
+   * Delaying the bare CR so it arrives in a SEPARATE read cycle makes it read as
+   * a genuine standalone Enter keystroke, which submits. Verified against Codex:
+   * a standalone CR (the key-bar Enter) submits; a combined write does not.
+   *
+   * Plain shells (cmd.exe/bash) are unaffected — they execute on the CR whenever
+   * it arrives.
+   */
   input(line: string): void {
     if (!this.shell) {
       throw new Error('Terminal not started');
     }
     appendHistory(line);
-    const data = line.endsWith('\n') || line.endsWith('\r') ? line : line + '\r';
-    this.shell.write(data);
+    // Strip any trailing newline the caller included; we supply the Enter.
+    const text = line.replace(/[\r\n]+$/, '');
+    if (text) {
+      this.shell.write(text);
+    }
+    // Defer the Enter to the next macrotask so the PTY delivers the text and the
+    // CR in distinct reads, defeating the paste-burst heuristic. ENTER_DELAY_MS
+    // is tiny — imperceptible to the user, enough to break the burst.
+    const shell = this.shell;
+    setTimeout(() => shell.write('\r'), ENTER_DELAY_MS);
   }
 
   /** Send raw bytes/keys without history (e.g. arrow keys, Ctrl sequences). */
