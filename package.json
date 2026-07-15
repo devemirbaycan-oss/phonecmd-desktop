@@ -75,7 +75,6 @@
     ],
     "win": {
       "target": "nsis",
-      "//artifactName": "Space-free name so latest.yml matches the uploaded asset. The default '${productName} Setup ${version}.${ext}' has spaces; electron-updater encodes them as hyphens in latest.yml ('PhoneCMD-Setup-0.1.9.exe') but GitHub's release upload turns them into dots ('PhoneCMD.Setup.0.1.9.exe'), so the auto-updater download 404s. This was why auto-update never applied.",
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "mac": {

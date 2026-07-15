@@ -9,6 +9,14 @@
 # Apple account $99/yr). Windows shows "Windows protected your PC" — users click
 # More info → Run anyway. macOS Gatekeeper blocks it harder: right-click → Open.
 # The download page explains both.
+#
+# Note on filenames (why auto-update broke through v0.1.9): electron-builder's
+# default NSIS name is "PhoneCMD Setup <v>.exe" (spaces). electron-updater writes
+# it into latest.yml URL-encoded with hyphens ("PhoneCMD-Setup-<v>.exe"), but the
+# GitHub release upload rewrites spaces to dots ("PhoneCMD.Setup.<v>.exe"). The
+# two names then disagree and the updater's download 404s — silently. Fixed by
+# win.artifactName = "${productName}-Setup-${version}.${ext}" in package.json,
+# which is space-free so all three names match. Don't reintroduce spaces here.
 
 name: Release desktop app
 
