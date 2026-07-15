@@ -29,9 +29,18 @@ const HISTORY_FILE = join(DIR, 'history.log');
 const PROFILES_FILE = join(DIR, 'profiles.json');
 const MAX_HISTORY_LINES = 1000;
 
-/** How long to wait before writing the submit-CR after the line's text, so a
- *  TUI's paste heuristic sees the Enter as a standalone keystroke (see input). */
-const ENTER_DELAY_MS = 20;
+/**
+ * How long to wait before writing the submit-CR after the line's text, so a
+ * TUI's paste heuristic sees the Enter as a standalone keystroke (see input).
+ *
+ * Must be comfortably LARGER than the CLI's paste-burst window, or the text and
+ * CR coalesce into one "paste" and the CR inserts a newline instead of
+ * submitting. 20ms was too short (verified against Codex: the message stayed in
+ * the composer). The phone's key-bar Enter — which arrives as its own network
+ * round-trip, ~50-150ms after the text — always submits; this delay reproduces
+ * that separation on the term.input path.
+ */
+const ENTER_DELAY_MS = 120;
 
 type PushFn = (kind: 'term.output' | 'term.exit', data: unknown) => void;
 

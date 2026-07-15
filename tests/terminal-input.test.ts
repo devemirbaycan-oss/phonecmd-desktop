@@ -41,8 +41,9 @@ describe('Terminal.input — submit CR handling', () => {
     // Immediately after input(): the text is out, but the CR is deferred.
     expect(writes).toEqual(['say hello']);
 
-    // After the defer window: the standalone CR has landed as its own write.
-    await tick(40);
+    // After the defer window (> ENTER_DELAY_MS): the standalone CR has landed
+    // as its own write.
+    await tick(200);
     expect(writes).toEqual(['say hello', '\r']);
   });
 
@@ -52,7 +53,7 @@ describe('Terminal.input — submit CR handling', () => {
     t.start();
 
     t.input('echo hi\r'); // caller already appended a CR
-    await tick(40);
+    await tick(200);
 
     // Text without the trailing CR, then exactly one standalone CR.
     expect(writes).toEqual(['echo hi', '\r']);
@@ -64,7 +65,7 @@ describe('Terminal.input — submit CR handling', () => {
     t.start();
 
     t.input('');
-    await tick(40);
+    await tick(200);
 
     expect(writes).toEqual(['\r']);
   });
