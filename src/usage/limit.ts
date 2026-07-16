@@ -16,10 +16,11 @@ import {promises as fsp, readFileSync, writeFileSync, mkdirSync} from 'fs';
 import {join} from 'path';
 import {homedir} from 'os';
 
-// Raised from 10 to 500 so the cap effectively never fires during real use /
-// testing, while the free-tier accounting stays intact. Lower it (or wire a
-// subscription-gated value) when the paid tier goes live.
-export const FREE_DAILY_LIMIT = 500;
+// The advertised free tier: 10 commands/day (see the pricing + FAQ on
+// phonecmd.emirbaycan.com.tr — they must agree, or we're mis-selling).
+// This was temporarily raised to 500 during development so testing wasn't
+// throttled; restored for the paid tier going live.
+export const FREE_DAILY_LIMIT = 10;
 
 const DIR = join(homedir(), '.phonecmd');
 const FILE = join(DIR, 'usage.json');
