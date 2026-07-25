@@ -44,6 +44,7 @@ export function encodeKeycode(qr: QrPayload): string {
     k: qr.desktopPublicKey,
     c: qr.pairingCode,
     x: qr.expiresAt ?? null,
+    n: qr.hostName ?? null, // machine name → phone labels the PC by name, not IP
   };
   return KEYCODE_PREFIX + toB64Url(JSON.stringify(compact));
 }
@@ -67,6 +68,7 @@ export function decodeKeycode(code: string): QrPayload | null {
       desktopPublicKey: o.k,
       pairingCode: o.c,
       expiresAt: typeof o.x === 'string' ? o.x : null,
+      hostName: typeof o.n === 'string' ? o.n : null,
     };
   } catch {
     return null;

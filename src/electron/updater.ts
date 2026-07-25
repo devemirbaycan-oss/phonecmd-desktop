@@ -23,6 +23,21 @@ type Log = (msg: string) => void;
 let wired = false;
 let logFn: Log = () => {};
 let enabled = true;
+let recheckTimer: ReturnType<typeof setInterval> | null = null;
+
+/** Re-check for updates on this cadence, not just at launch — a host left
+ *  running for days would otherwise never notice a new release. 6 hours. */
+const RECHECK_MS = 6 * 60 * 60 * 1000;
+
+/** Fire a check now, swallowing every error (a failed check must be a non-event
+ *  and never take the app down). */
+function checkNow(reason: string): void {
+  if (!enabled || !wired || !app.isPackaged) return;
+  logFn(`auto-update: checking (${reason})`);
+  autoUpdater.checkForUpdates().catch(err =>
+    logFn(`auto-update: check failed (${err?.message ?? err})`),
+  );
+}
 
 /**
  * Enable/disable auto-update at runtime (from the settings toggle). When turned
@@ -32,8 +47,24 @@ let enabled = true;
 export function setAutoUpdateEnabled(on: boolean): void {
   enabled = on;
   logFn(`auto-update: ${on ? 'enabled' : 'disabled'}`);
-  if (on && wired && app.isPackaged) {
-    autoUpdater.checkForUpdates().catch(err => logFn(`auto-update: check failed (${err?.message ?? err})`));
+  if (on) {
+    checkNow('re-enabled');
+    startRecheckTimer();
+  } else {
+    stopRecheckTimer();
+  }
+}
+
+function startRecheckTimer(): void {
+  if (recheckTimer || !app.isPackaged) return;
+  recheckTimer = setInterval(() => checkNow('periodic'), RECHECK_MS);
+  recheckTimer.unref?.(); // never keep the app alive just for the timer
+}
+
+function stopRecheckTimer(): void {
+  if (recheckTimer) {
+    clearInterval(recheckTimer);
+    recheckTimer = null;
   }
 }
 
@@ -55,6 +86,16 @@ export function initAutoUpdate(getWindow: () => BrowserWindow | null, log: Log =
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  // Strictness: only ever move FORWARD. Never "update" to an equal/older version
+  // (which is exactly how a stale download wedged the updater before — it kept a
+  // same-version installer pending and never advanced). allowDowngrade=false
+  // makes electron-updater ignore anything ≤ the current version.
+  autoUpdater.allowDowngrade = false;
+  autoUpdater.allowPrerelease = false;
+  // Don't silently reuse a half-downloaded/stale cached installer across a
+  // relaunch — verify against the current manifest each time. This avoids the
+  // "pending installer from an old version never applies" trap.
+  autoUpdater.disableDifferentialDownload = true;
   autoUpdater.logger = {
     info: (m: unknown) => log(`auto-update: ${m}`),
     warn: (m: unknown) => log(`auto-update warn: ${m}`),
@@ -102,9 +143,9 @@ export function initAutoUpdate(getWindow: () => BrowserWindow | null, log: Log =
     return;
   }
 
-  // Fire the check. Catch synchronously AND the returned promise — a rejection
-  // here must not become an unhandled rejection that could take the app down.
-  autoUpdater.checkForUpdates().catch(err => {
-    log(`auto-update: initial check failed (${err?.message ?? err})`);
-  });
+  // Check now, then keep re-checking so a long-lived host still picks up
+  // releases published after it launched (the old code only checked once, so an
+  // always-on desktop could sit on a stale version indefinitely).
+  checkNow('launch');
+  startRecheckTimer();
 }

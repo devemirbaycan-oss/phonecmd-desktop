@@ -125,4 +125,34 @@ describe('Rendezvous register client', () => {
     await new Promise(res => setTimeout(res, 5));
     r.stop();
   });
+
+  it('re-resolves a changed LAN IP via refreshLan (self-heal)', async () => {
+    const bodies: {endpoint: string; lanEndpoint: string | null}[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: any) => {
+      const b = JSON.parse(init.body);
+      bodies.push({endpoint: b.endpoint, lanEndpoint: b.lanEndpoint});
+      return {ok: true, status: 200} as any;
+    }));
+    // Simulate the PC's LAN IP changing between the first register and a manual
+    // re-register (the heartbeat calls the same code path).
+    let lan = 'ws://192.168.1.10:8787';
+    const r = new Rendezvous({
+      pcId: 'PUB',
+      apiBase: 'https://api.test',
+      refreshLan: () => lan,
+    });
+    r.start('ws://192.168.1.10:8787', lan); // primary IS the LAN address
+    await new Promise(res => setTimeout(res, 5));
+    lan = 'ws://192.168.1.55:8787'; // DHCP moved us
+    // start() always fires register(), which consults refreshLan (the heartbeat
+    // does the same). It should pick up the new LAN IP even though the args match.
+    r.start('ws://192.168.1.10:8787', 'ws://192.168.1.10:8787');
+    await new Promise(res => setTimeout(res, 5));
+    r.stop();
+    // The last registration must carry the NEW LAN IP, and since the primary was
+    // the LAN address it moved too.
+    const last = bodies[bodies.length - 1];
+    expect(last.lanEndpoint).toBe('ws://192.168.1.55:8787');
+    expect(last.endpoint).toBe('ws://192.168.1.55:8787');
+  });
 });

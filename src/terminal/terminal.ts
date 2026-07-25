@@ -115,9 +115,19 @@ function spawnShell(cwd: string): ShellBackend {
   };
 }
 
+/** How much recent shell output to retain for replay on reconnect (~256 KB).
+ *  Enough to restore a screenful+ of a running session; capped so a long-lived
+ *  shell can't grow host memory without bound. */
+const SCROLLBACK_LIMIT = 256 * 1024;
+
 /** One persistent shell SESSION (PTY-backed), streaming output to the phone. */
 export class Terminal {
   private shell: ShellBackend | null = null;
+  // Recent output, kept so that when the phone reconnects (e.g. WiFi → remote
+  // P2P failover) we can REPLAY it and the terminal view is restored instead of
+  // blank. The shell itself already survives across connections (see registry);
+  // this is what makes the phone SEE the surviving session.
+  private scrollback = '';
   // Test seam: inject a fake backend so unit tests can observe writes without
   // spawning a real shell. Production leaves this undefined → spawnShell().
   private spawn: (cwd: string) => ShellBackend;
@@ -130,9 +140,22 @@ export class Terminal {
     this.spawn = spawn;
   }
 
-  /** Update the push channel (a reconnect brings a new one). */
+  /** Update the push channel (a reconnect brings a new one) and REPLAY the
+   *  retained scrollback so the reattached phone sees the running session's
+   *  existing content, not a blank screen. */
   setPush(push: PushFn) {
     this.push = push;
+    if (this.scrollback) {
+      push('term.output', {termId: this.termId, chunk: this.scrollback, replay: true});
+    }
+  }
+
+  /** Append to scrollback, trimming to the cap (drop oldest, keep a whole tail). */
+  private remember(chunk: string): void {
+    this.scrollback += chunk;
+    if (this.scrollback.length > SCROLLBACK_LIMIT) {
+      this.scrollback = this.scrollback.slice(-SCROLLBACK_LIMIT);
+    }
   }
 
   get running(): boolean {
@@ -154,9 +177,10 @@ export class Terminal {
       return {cwd: startCwd};
     }
 
-    this.shell.onData(chunk =>
-      this.push('term.output', {termId: this.termId, chunk}),
-    );
+    this.shell.onData(chunk => {
+      this.remember(chunk);
+      this.push('term.output', {termId: this.termId, chunk});
+    });
     this.shell.onExit(code => {
       this.push('term.exit', {termId: this.termId, code});
       this.shell = null;

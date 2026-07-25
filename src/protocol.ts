@@ -26,6 +26,9 @@ export interface QrPayload {
   desktopPublicKey: string; // base64 X25519 public key — authenticates the desktop
   /** ISO8601 expiry for the pairing window, or null = never expires (default). */
   expiresAt: string | null;
+  /** The desktop's machine name (os.hostname()), so the phone can label this PC
+   *  by name instead of a bare IP. Optional for back-compat with older hosts. */
+  hostName?: string | null;
 }
 
 /** First message the phone sends after connecting (cleartext). */

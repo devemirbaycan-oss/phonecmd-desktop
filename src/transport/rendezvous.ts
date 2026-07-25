@@ -1,9 +1,16 @@
 /**
  * Rendezvous registration — the host tells the PhoneCMD API "pcId X is reachable
- * at endpoint Y right now", and re-registers on a heartbeat + whenever the
- * endpoint changes (e.g. a Cloudflare quick tunnel rotated). The phone resolves
- * pcId → live endpoint via the same API, so a rotated tunnel URL never strands a
- * paired device.
+ * at endpoint Y right now", and re-registers on a heartbeat. The phone resolves
+ * pcId → live endpoint via the same API, so a paired device is never stranded by
+ * a changed address.
+ *
+ * The pcId (the desktop's public key) is STABLE — it never changes across IP
+ * changes, reboots, or network switches. So on each heartbeat we RE-RESOLVE the
+ * host's current LAN IP (via refreshLan) and re-register it: if the PC's LAN IP
+ * changes while running (DHCP renew, WiFi reconnect), the phone picks up the new
+ * one on its next resolve, and LAN connect keeps working. Remote/P2P doesn't even
+ * need the endpoint — it reaches the host by pcId through signaling — so it's
+ * already immune to IP changes.
  *
  * Best-effort: if the API is unreachable, LAN-direct pairing still works and the
  * baked endpoint in the keycode is the fallback. Registration failures are logged
@@ -17,6 +24,9 @@ export interface RendezvousOptions {
   pcId: string;
   apiBase?: string;
   log?: (msg: string) => void;
+  /** Recompute the host's current LAN endpoint. Called on every heartbeat so a
+   *  changed LAN IP self-heals. Returns null when not on a LAN. */
+  refreshLan?: () => string | null;
 }
 
 export class Rendezvous {
@@ -59,6 +69,16 @@ export class Rendezvous {
   private async register(): Promise<void> {
     if (!this.endpoint) {
       return;
+    }
+    // Re-resolve the LAN IP each heartbeat so a changed address self-heals.
+    const freshLan = this.opts.refreshLan?.() ?? this.lanEndpoint;
+    if (freshLan !== this.lanEndpoint) {
+      this.opts.log?.(`rendezvous: LAN endpoint changed ${this.lanEndpoint} → ${freshLan}`);
+      this.lanEndpoint = freshLan;
+      // If the primary endpoint WAS the LAN address (no relay), move it too.
+      if (this.endpoint && this.endpoint.startsWith("ws://") && freshLan) {
+        this.endpoint = freshLan;
+      }
     }
     try {
       const res = await fetch(`${this.apiBase}/pc/register`, {

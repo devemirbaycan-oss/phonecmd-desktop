@@ -300,7 +300,7 @@
       <div class="card">
         <h2>Connection</h2>
         <div class="row">
-          <span class="k">Relay</span>
+          <span class="k">Remote (P2P)</span>
           <span class="v" id="relayVal">—</span>
         </div>
         <div class="row">
@@ -385,7 +385,7 @@
         logEl.scrollTop = logEl.scrollHeight;
       }
 
-      // The host only emits lifecycle status (starting/tunneling/ready/stopped).
+      // The host only emits lifecycle status (starting/ready/stopped/error).
       // Pairing and device counts arrive on other channels, so we remember the
       // last lifecycle status and let those override the *text* — otherwise the
       // header keeps claiming "waiting for device" while a pairing prompt is up.
@@ -399,7 +399,6 @@
         dot.className = 'dot';
         let text = hostStatus;
         if (hostStatus === 'error') { dot.classList.add('error'); text = 'error' + (detail ? ': ' + detail : ''); }
-        else if (hostStatus === 'tunneling') { text = 'opening tunnel…'; }
         else if (hostStatus === 'stopped') { text = 'stopped'; }
         else if (hostStatus === 'ready') {
           dot.classList.add('ready');
@@ -449,7 +448,6 @@
         const el = $('splashText');
         if (!el) return;
         if (status === 'starting') el.textContent = 'Starting…';
-        else if (status === 'tunneling') el.textContent = 'Opening secure tunnel…';
       }
 
       window.phonecmd.onEvent((type, data) => {
@@ -462,13 +460,17 @@
           $('pairCode').textContent = data.payload.pairingCode;
           currentKeycode = data.keycode;
           $('keycode').textContent = data.keycode;
-          // Connection panel
-          $('relayVal').textContent = shortUrl(data.payload.endpoint);
+          // Connection panel.
+          // Remote access is P2P (WebRTC) — there is no relay URL to show, and
+          // the ws endpoint is the LAN address. Showing that endpoint here (the
+          // old "Relay" row) displayed a LAN IP as if it were reachable from
+          // anywhere, which it never was.
+          $('relayVal').textContent = 'direct P2P — works off your network';
           $('relayVal').className = 'v on';
           const lan = data.payload.lanEndpoint;
           $('lanVal').textContent = lan ? shortUrl(lan) : 'not on a LAN';
           $('lanVal').className = 'v ' + (lan ? 'on' : 'off');
-          $('rvVal').textContent = 'registered — survives tunnel restarts';
+          $('rvVal').textContent = 'registered — reachable by paired phones';
           $('rvVal').className = 'v on';
         }
         else if (type === 'paired') addLog('<b>' + data.deviceName + '</b> paired ✅');

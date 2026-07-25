@@ -14,6 +14,7 @@ const RELAY: QrPayload = {
   desktopPublicKey: 'Mny/00Z3l2ggpV3uR0JRN7jS4JCuMN5znnHgSDFYTg4=',
   pairingCode: '423301',
   expiresAt: null,
+  hostName: null,
 };
 
 describe('desktop keycode', () => {

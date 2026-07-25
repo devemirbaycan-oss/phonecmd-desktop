@@ -21,6 +21,7 @@
  * unguessable, where a 6-digit code is 10^6 guesses. See ./devices.ts.
  */
 
+import { hostname } from "os";
 import { WebSocket } from "ws";
 import {
   Sodium,
@@ -135,6 +136,8 @@ export class SessionManager {
       pairingCode: this.pairingCode,
       desktopPublicKey: toBase64(this.sodium, this.keyPair.publicKey),
       expiresAt: this.expiresAt ? this.expiresAt.toISOString() : null,
+      // Machine name so the phone labels this PC by name, not a bare IP.
+      hostName: hostname() || null,
     };
   }
 

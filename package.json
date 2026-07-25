@@ -1,7 +1,7 @@
 {
   "name": "phonecmd-desktop",
-  "version": "0.1.11",
-  "description": "PhoneCMD desktop host — WebSocket server, E2E crypto, Cloudflare tunnel, command engine",
+  "version": "0.2.2",
+  "description": "PhoneCMD desktop host — WebSocket server, E2E crypto, WebRTC P2P, command engine",
   "author": "PhoneCMD",
   "main": "dist/electron/main.js",
   "bin": {
@@ -18,14 +18,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "fetch:cloudflared": "node scripts/fetch-cloudflared.mjs",
     "prepack:app": "tsc && npm run copy:renderer",
     "pack:dir": "npm run prepack:app && electron-builder --dir",
-    "dist": "npm run fetch:cloudflared && npm run prepack:app && electron-builder"
+    "dist": "npm run prepack:app && electron-builder"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
     "libsodium-wrappers": "^0.7.13",
+    "node-datachannel": "^0.32.3",
     "node-pty": "^1.1.0",
     "qrcode": "^1.5.4",
     "qrcode-terminal": "^0.12.0",
@@ -64,15 +64,6 @@
     "directories": {
       "output": "release"
     },
-    "extraResources": [
-      {
-        "from": "resources/cloudflared",
-        "to": "cloudflared",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
     "win": {
       "target": "nsis",
       "artifactName": "${productName}-Setup-${version}.${ext}"
