@@ -47,6 +47,7 @@
     "appId": "com.phonecmd.desktop",
     "productName": "PhoneCMD",
     "icon": "build/icon.png",
+    "npmRebuild": false,
     "publish": [
       {
         "provider": "github",
