@@ -42,6 +42,7 @@ import {
 import { CommandRouter, LimitReachedError } from "../commands/router";
 import { loadOrCreateIdentity } from "./identity";
 import { isKnownDevice, rememberDevice } from "./devices";
+import { TaskDoneSpike } from "../terminal/taskDoneSpike";
 
 export interface SessionManagerOptions {
   /** How the phone reaches us (wss URL from the tunnel, or ws:// LAN). */
@@ -145,9 +146,14 @@ export class SessionManager {
   handleConnection(ws: WebSocket): void {
     const s = this.sodium;
     let peerPublic: Uint8Array | null = null;
+    let peerPublicB64: string | null = null; // the authenticated key, for device.revoke
     let deviceName = "unknown";
     let sessionToken: string | null = null;
     let isPro = false;
+    // Per-connection background task-done detector. On a working→done transition
+    // it triggers an encrypted task.done push the phone's native sniffer decrypts
+    // to notify while the app's JS thread is frozen (backgrounded).
+    const taskDone = new TaskDoneSpike();
 
     ws.on("message", async (raw) => {
       let msg: unknown;
@@ -169,6 +175,7 @@ export class SessionManager {
         // Parse the phone's key first — it's the identity everything hangs off.
         try {
           peerPublic = fromBase64(s, req.mobilePublicKey);
+          peerPublicB64 = req.mobilePublicKey; // authenticated key for device.revoke
         } catch {
           this.reject(ws, "bad mobile public key");
           return;
@@ -264,11 +271,31 @@ export class SessionManager {
       const pub = peerPublic;
       const push = (kind: import("../protocol").PushKind, data: unknown) => {
         this.sendEncrypted(ws, pub, { id: `push:${kind}`, ok: true, push: kind, data });
+        // Background task-done: detect a working→done transition in terminal
+        // output and send an ENCRYPTED task.done push. It rides the same E2E
+        // envelope as any push; the phone's native sniffer decrypts it on the
+        // data channel and posts an OS notification even while the app's JS
+        // thread is frozen (backgrounded) — the only way to notify then.
+        if (kind === "term.output") {
+          const d = data as { termId?: string; chunk?: string };
+          if (d?.termId && typeof d.chunk === "string") {
+            const termId = d.termId;
+            taskDone.feed(termId, d.chunk, ({ title, body }) => {
+              push("task.done", { termId, title, body });
+              this.log(`sent task.done push for ${termId}`);
+            });
+          }
+        }
       };
 
       let response: CommandResponse;
       try {
-        const data = await this.opts.router.dispatch(req, { deviceName, isPro, push });
+        const data = await this.opts.router.dispatch(req, {
+          deviceName,
+          isPro,
+          push,
+          devicePublicKey: peerPublicB64 ?? undefined,
+        });
         response = { id: req.id, ok: true, data };
       } catch (err) {
         if (err instanceof LimitReachedError) {
@@ -291,7 +318,10 @@ export class SessionManager {
       this.sendEncrypted(ws, peerPublic, response);
     });
 
-    ws.on("close", () => this.log(`disconnected: ${deviceName}`));
+    ws.on("close", () => {
+      taskDone.dispose();
+      this.log(`disconnected: ${deviceName}`);
+    });
   }
 
   // ── internals ──────────────────────────────────────────────────────────

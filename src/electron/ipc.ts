@@ -5,11 +5,19 @@
 
 import {QrPayload, PairRequest} from '../protocol';
 
-/** One device currently paired to this host. */
+/** One device this host knows — either live now or remembered from before. */
 export interface ConnectedDevice {
   deviceName: string;
-  /** ISO timestamp of when it paired. */
+  /** ISO timestamp: when it connected this session, or when it was first paired. */
   since: string;
+  /** True if the device is connected right now; false = remembered (offline). */
+  online: boolean;
+  /** The device's X25519 public key (base64) — the identity to revoke/rename. */
+  publicKey?: string;
+  /** User-set label from the desktop (overrides deviceName for display). */
+  label?: string;
+  /** Pinned to the top of the list. */
+  favorite?: boolean;
 }
 
 /** Events pushed main → renderer. */
@@ -59,4 +67,16 @@ export const CHANNEL = {
   version: 'phonecmd:version', // renderer → main: get app version
   getAutoUpdate: 'phonecmd:get-auto-update', // renderer → main
   setAutoUpdate: 'phonecmd:set-auto-update', // renderer → main
+  getLocalhost: 'phonecmd:get-localhost', // renderer → main: read localhost-preview config
+  setLocalhost: 'phonecmd:set-localhost', // renderer → main: update localhost-preview config
+  forgetDevice: 'phonecmd:forget-device', // renderer → main: revoke a paired device
+  renameDevice: 'phonecmd:rename-device', // renderer → main: set a device label
+  favoriteDevice: 'phonecmd:favorite-device', // renderer → main: pin/unpin a device
 } as const;
+
+/** The localhost-preview config surfaced to / from the settings UI. */
+export interface LocalhostConfig {
+  enabled: boolean;
+  allowPorts: number[];
+  denyPorts: number[];
+}

@@ -21,6 +21,9 @@ export interface CommandContext {
   deviceName: string;
   /** Whether this device is Pro (unlimited). Set from the pair request. */
   isPro: boolean;
+  /** The connected device's own X25519 public key (base64) — the identity the
+   *  host authenticated. Used so a device can revoke ITSELF (device.revoke). */
+  devicePublicKey?: string;
   /**
    * Push an unsolicited, encrypted message to the phone (e.g. streaming
    * terminal output). Provided by the session layer. Handlers that only do

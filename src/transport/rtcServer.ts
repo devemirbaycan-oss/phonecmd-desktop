@@ -18,6 +18,7 @@
 
 import {EventEmitter} from 'events';
 import * as dc from 'node-datachannel';
+import {splitMessage, ChunkReassembler} from './rtcChunk';
 
 const DEFAULT_API = 'https://phonecmd.emirbaycan.com.tr/api';
 /** How often the host asks the signaling server "any phone trying to reach me?" */
@@ -37,6 +38,7 @@ export interface RtcServerOptions {
  */
 class ChannelSocket extends EventEmitter {
   private closed = false;
+  private reassembler = new ChunkReassembler();
   constructor(
     private channel: dc.DataChannel,
     private pc: dc.PeerConnection,
@@ -45,12 +47,19 @@ class ChannelSocket extends EventEmitter {
     super();
     channel.onMessage(msg => {
       // node-datachannel delivers string or Buffer; the protocol is JSON text.
-      this.emit('message', typeof msg === 'string' ? msg : msg.toString());
+      const raw = typeof msg === 'string' ? msg : msg.toString();
+      // Reassemble chunked messages (large payloads split to fit the channel's
+      // ~16 KB max message size); small ones pass straight through.
+      const complete = this.reassembler.push(raw);
+      if (complete !== null) this.emit('message', complete);
     });
     channel.onClosed(() => this.fireClose());
-    // If the peer connection itself drops (ICE failed / phone gone), close too.
+    // If the peer connection truly fails, close too — but NOT on 'disconnected',
+    // which is transient (a brief network blip / ICE re-check) and usually heals
+    // back to 'connected'. Closing on 'disconnected' tore down a live session on
+    // every hiccup, which the phone then had to reconnect — the disconnect churn.
     pc.onStateChange(state => {
-      if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+      if (state === 'failed' || state === 'closed') {
         this.fireClose();
       }
     });
@@ -60,7 +69,12 @@ class ChannelSocket extends EventEmitter {
   send(data: string): void {
     if (!this.closed) {
       try {
-        this.channel.sendMessage(data);
+        // Split large payloads so each frame fits the channel's max message size
+        // (a full HTML page over localhost preview otherwise exceeds it and the
+        // send silently drops — worked on LAN/WS, failed on P2P).
+        for (const frame of splitMessage(data)) {
+          this.channel.sendMessage(frame);
+        }
       } catch {
         /* channel went away between checks — treat as closed */
         this.fireClose();

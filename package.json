@@ -1,6 +1,6 @@
 {
   "name": "phonecmd-desktop",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "PhoneCMD desktop host — WebSocket server, E2E crypto, WebRTC P2P, command engine",
   "author": "PhoneCMD",
   "main": "dist/electron/main.js",

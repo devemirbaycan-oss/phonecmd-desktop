@@ -90,7 +90,17 @@ export interface CommandResponse {
 }
 
 /** Kinds of unsolicited server→phone push messages (encrypted like any other). */
-export type PushKind = 'term.output' | 'term.exit';
+export type PushKind = 'term.output' | 'term.exit' | 'task.done';
+
+/** A coding CLI/build finished on the PC (inside a CommandResponse with
+ *  push:'task.done'). The phone posts an OS notification — detected desktop-side
+ *  and delivered even while the app's JS thread is frozen, via a native sniffer
+ *  on the P2P data channel. */
+export interface TaskDone {
+  termId: string;
+  title: string; // e.g. "Shell 1: Build succeeded"
+  body?: string;
+}
 
 /** Terminal output chunk pushed desktop → phone (inside a CommandResponse with
  *  push:'term.output', carried in `data`). termId identifies which tab/shell. */

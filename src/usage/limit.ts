@@ -18,8 +18,10 @@ import {homedir} from 'os';
 
 // The advertised free tier: 10 commands/day (see the pricing + FAQ on
 // phonecmd.emirbaycan.com.tr — they must agree, or we're mis-selling).
-// This was temporarily raised to 500 during development so testing wasn't
-// throttled; restored for the paid tier going live.
+// This has twice been temporarily raised to 500 during development so testing
+// wasn't throttled, and twice restored. If you raise it again, restore it before
+// building a release — shipping the dev value gives paying users nothing and
+// makes the pricing page false.
 export const FREE_DAILY_LIMIT = 10;
 
 const DIR = join(homedir(), '.phonecmd');

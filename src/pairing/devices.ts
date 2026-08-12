@@ -39,6 +39,11 @@ export interface KnownDevice {
   publicKey: string;
   /** Last device name it announced (display only — never trusted for auth). */
   name: string;
+  /** A user-set label (from the desktop UI). Overrides `name` for display when
+   *  present, so renaming a device on the desktop sticks across reconnects. */
+  label?: string;
+  /** User pinned this device to the top of the list. */
+  favorite?: boolean;
   /** ISO timestamps, for the UI and for pruning. */
   pairedAt: string;
   lastSeenAt: string;
@@ -96,6 +101,26 @@ export async function forgetDevice(publicKey: string): Promise<void> {
 /** Revoke every device. */
 export async function forgetAllDevices(): Promise<void> {
   await save({devices: []});
+}
+
+/** Set (or clear) a user label for a device — display only, never affects auth. */
+export async function renameDevice(publicKey: string, label: string): Promise<void> {
+  const devices = await loadKnownDevices();
+  const d = devices.find(x => x.publicKey === publicKey);
+  if (d) {
+    d.label = label.trim() || undefined;
+    await save({devices});
+  }
+}
+
+/** Pin/unpin a device. */
+export async function setDeviceFavorite(publicKey: string, favorite: boolean): Promise<void> {
+  const devices = await loadKnownDevices();
+  const d = devices.find(x => x.publicKey === publicKey);
+  if (d) {
+    d.favorite = favorite;
+    await save({devices});
+  }
 }
 
 async function save(data: StoredDevices): Promise<void> {

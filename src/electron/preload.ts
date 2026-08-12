@@ -18,7 +18,19 @@ const CHANNEL = {
   version: 'phonecmd:version',
   getAutoUpdate: 'phonecmd:get-auto-update',
   setAutoUpdate: 'phonecmd:set-auto-update',
+  getLocalhost: 'phonecmd:get-localhost',
+  setLocalhost: 'phonecmd:set-localhost',
+  forgetDevice: 'phonecmd:forget-device',
+  renameDevice: 'phonecmd:rename-device',
+  favoriteDevice: 'phonecmd:favorite-device',
 } as const;
+
+/** Mirror of ipc.ts LocalhostConfig (preload can't import it). */
+interface LocalhostConfig {
+  enabled: boolean;
+  allowPorts: number[];
+  denyPorts: number[];
+}
 
 const api = {
   /** Tell main the UI is ready; main then starts the host. */
@@ -56,6 +68,26 @@ const api = {
   /** Turn auto-update on/off. Returns the new value. */
   setAutoUpdate: (enabled: boolean): Promise<boolean> =>
     ipcRenderer.invoke(CHANNEL.setAutoUpdate, enabled),
+
+  /** Read the Localhost Preview config (enabled + port allow/deny lists). */
+  getLocalhost: (): Promise<LocalhostConfig> =>
+    ipcRenderer.invoke(CHANNEL.getLocalhost),
+
+  /** Update the Localhost Preview config. Returns the saved value. */
+  setLocalhost: (cfg: LocalhostConfig): Promise<LocalhostConfig> =>
+    ipcRenderer.invoke(CHANNEL.setLocalhost, cfg),
+
+  /** Revoke a paired device (it must re-pair with code + approval next time). */
+  forgetDevice: (publicKey: string): Promise<void> =>
+    ipcRenderer.invoke(CHANNEL.forgetDevice, publicKey),
+
+  /** Set a display label for a device. */
+  renameDevice: (publicKey: string, label: string): Promise<void> =>
+    ipcRenderer.invoke(CHANNEL.renameDevice, publicKey, label),
+
+  /** Pin/unpin a device. */
+  favoriteDevice: (publicKey: string, favorite: boolean): Promise<void> =>
+    ipcRenderer.invoke(CHANNEL.favoriteDevice, publicKey, favorite),
 };
 
 contextBridge.exposeInMainWorld('phonecmd', api);

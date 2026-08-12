@@ -23,6 +23,7 @@ function dbg(msg: string): void {
 import {HostCore} from '../core/host';
 import {ttlFromChoice, PAIRING_TTL_OPTIONS} from '../pairing/session';
 import {encodeKeycode} from '../pairing/keycode';
+import {loadKnownDevices, forgetDevice, renameDevice, setDeviceFavorite} from '../pairing/devices';
 import {getUsage, FREE_DAILY_LIMIT} from '../usage/limit';
 import {PairRequest} from '../protocol';
 import {CHANNEL, ConnectedDevice} from './ipc';
@@ -42,9 +43,34 @@ let pairingTtlChoice: string =
 const pendingApprovals = new Map<string, (approved: boolean) => void>();
 let approvalSeq = 0;
 
-// Devices currently paired to this host, in pair order.
+// Every device this host knows — remembered ones (from devices.json, loaded at
+// startup, shown offline) plus any live this session. Keyed by device name for
+// the UI; `online` reflects live connection state.
 const devices: ConnectedDevice[] = [];
 let usageTimer: NodeJS.Timeout | null = null;
+
+/** Load remembered devices so the list isn't empty after a restart until the
+ *  phone reconnects. They show as offline until they connect. */
+async function loadRememberedDevices(): Promise<void> {
+  try {
+    const known = await loadKnownDevices();
+    for (const d of known) {
+      if (!devices.some(x => x.publicKey === d.publicKey)) {
+        devices.push({
+          deviceName: d.name,
+          since: d.pairedAt,
+          online: false,
+          publicKey: d.publicKey,
+          label: d.label,
+          favorite: d.favorite,
+        });
+      }
+    }
+    pushDevices();
+  } catch {
+    /* best-effort — an empty list is fine */
+  }
+}
 
 function pushDevices(): void {
   send('devices', {devices: [...devices]});
@@ -158,19 +184,38 @@ async function startHost(): Promise<void> {
     dbg(message);
     send('log', {message});
   });
-  host.on('paired', deviceName => {
+  host.on('paired', async deviceName => {
     send('paired', {deviceName});
-    if (!devices.some(d => d.deviceName === deviceName)) {
-      devices.push({deviceName, since: new Date().toISOString()});
+    const existing = devices.find(d => d.deviceName === deviceName);
+    if (existing) {
+      existing.online = true; // a remembered device came back online
+    } else {
+      devices.push({deviceName, since: new Date().toISOString(), online: true});
+    }
+    // Backfill publicKey/label/favorite from devices.json (rememberDevice just
+    // wrote the key) so the row supports delete/rename/favorite this session.
+    try {
+      const known = await loadKnownDevices();
+      const match = known.find(k => k.name === deviceName);
+      const row = devices.find(d => d.deviceName === deviceName);
+      if (match && row) {
+        row.publicKey = match.publicKey;
+        row.label = match.label;
+        row.favorite = match.favorite;
+      }
+    } catch {
+      /* best-effort */
     }
     pushDevices();
     pushUsage();
   });
   host.on('disconnected', deviceName => {
     send('disconnected', {deviceName});
-    const i = devices.findIndex(d => d.deviceName === deviceName);
-    if (i >= 0) {
-      devices.splice(i, 1);
+    // Keep the device in the list but mark it offline — it's still a known,
+    // approved device (persisted in devices.json), just not connected now.
+    const d = devices.find(x => x.deviceName === deviceName);
+    if (d) {
+      d.online = false;
     }
     pushDevices();
   });
@@ -189,9 +234,12 @@ async function startHost(): Promise<void> {
 
   await host.start();
 
-  // A restart re-pairs from scratch: clear the device list.
+  // Reset the live list, then repopulate from the remembered devices so the UI
+  // shows previously-approved phones (offline) instead of an empty list. They
+  // flip to online when they reconnect. (A restart does NOT drop pairings —
+  // approved keys live in devices.json.)
   devices.length = 0;
-  pushDevices();
+  await loadRememberedDevices();
   pushUsage();
 
   // Keep the usage bar live while commands run.
@@ -257,6 +305,52 @@ app.whenReady().then(() => {
     const {autoUpdate} = saveSettings({autoUpdate: !!enabled});
     setAutoUpdateEnabled(autoUpdate); // start/stop the checker live
     return autoUpdate;
+  });
+
+  // Localhost Preview config (off by default; localhost-only + port policy).
+  const readLocalhost = () => {
+    const s = loadSettings();
+    return {enabled: s.localhostPreview, allowPorts: s.localhostAllowPorts, denyPorts: s.localhostDenyPorts};
+  };
+  // Coerce arbitrary renderer input into a clean, de-duped list of valid ports.
+  const cleanPorts = (v: unknown): number[] =>
+    Array.isArray(v)
+      ? [...new Set(v.map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 65535))]
+      : [];
+  ipcMain.handle(CHANNEL.getLocalhost, () => readLocalhost());
+  ipcMain.handle(CHANNEL.setLocalhost, (_e, cfg: {enabled?: boolean; allowPorts?: unknown; denyPorts?: unknown}) => {
+    saveSettings({
+      localhostPreview: !!cfg?.enabled,
+      localhostAllowPorts: cleanPorts(cfg?.allowPorts),
+      localhostDenyPorts: cleanPorts(cfg?.denyPorts),
+    });
+    return readLocalhost();
+  });
+
+  // Paired-device management from the desktop (delete / rename / favorite). Each
+  // updates devices.json and refreshes the UI list. Forget = full revoke: that
+  // device must re-pair (code + approval) next time.
+  const applyDeviceUpdate = (publicKey: string, fn: (d: ConnectedDevice) => void) => {
+    const d = devices.find(x => x.publicKey === publicKey);
+    if (d) fn(d);
+    pushDevices();
+  };
+  ipcMain.handle(CHANNEL.forgetDevice, async (_e, publicKey: string) => {
+    if (!publicKey) return;
+    await forgetDevice(publicKey);
+    const i = devices.findIndex(x => x.publicKey === publicKey);
+    if (i >= 0) devices.splice(i, 1);
+    pushDevices();
+  });
+  ipcMain.handle(CHANNEL.renameDevice, async (_e, publicKey: string, label: string) => {
+    if (!publicKey) return;
+    await renameDevice(publicKey, label ?? '');
+    applyDeviceUpdate(publicKey, d => (d.label = (label ?? '').trim() || undefined));
+  });
+  ipcMain.handle(CHANNEL.favoriteDevice, async (_e, publicKey: string, favorite: boolean) => {
+    if (!publicKey) return;
+    await setDeviceFavorite(publicKey, !!favorite);
+    applyDeviceUpdate(publicKey, d => (d.favorite = !!favorite));
   });
 
   app.on('activate', () => {

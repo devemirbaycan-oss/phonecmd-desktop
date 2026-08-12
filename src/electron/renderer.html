@@ -134,8 +134,20 @@
       }
       .dev:last-child { border-bottom: none; }
       .dev .d { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+      .dev .d.off { background: var(--mute); }
+      .dev.offline .n { color: var(--mute); }
       .dev .n { font-weight: 600; font-size: 13px; }
       .dev .t { margin-left: auto; color: var(--mute); font-size: 11.5px; font-family: var(--mono); }
+      .dev-actions { display: flex; gap: 2px; margin-left: 8px; opacity: 0; transition: opacity .12s; }
+      .dev:hover .dev-actions { opacity: 1; }
+      .dev-btn { background: transparent; border: none; color: var(--dim); cursor: pointer;
+        font-size: 13px; padding: 3px 5px; border-radius: 5px; line-height: 1; }
+      .dev-btn:hover { background: var(--surface-alt); color: var(--text); }
+      .dev-btn.on { color: var(--accent); opacity: 1; }
+      .dev-btn.danger:hover { background: rgba(255,107,107,.15); color: #ff6b6b; }
+      /* Favorite star stays visible even when not hovering. */
+      .dev-actions .dev-btn.on { opacity: 1; }
+      .dev:not(:hover) .dev-actions:has(.on) { opacity: 1; }
       .empty { color: var(--mute); font-size: 12.5px; padding: 4px 0; }
 
       /* usage bar */
@@ -233,6 +245,21 @@
       @media (prefers-reduced-motion: reduce) {
         #splash .spinner { animation: none; }
       }
+
+      /* Text inputs (e.g. localhost port lists) — themed to match the app. */
+      input[type="text"] {
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 13px;
+        font-family: var(--mono, ui-monospace, monospace);
+        outline: none;
+        transition: border-color .15s;
+      }
+      input[type="text"]::placeholder { color: var(--mute); }
+      input[type="text"]:focus { border-color: var(--accent); }
 
       /* Settings toggle switch */
       .toggle-row { align-items: center; }
@@ -344,6 +371,38 @@
             <span class="slider"></span>
           </label>
         </div>
+
+        <div class="row toggle-row" style="margin-top:14px">
+          <div>
+            <span class="k">Localhost preview</span>
+            <div class="hint" style="text-align:left;margin-top:2px">
+              Let your paired phone open this PC's <code>localhost</code> (e.g. a
+              dev server) in its browser. Off by default.
+            </div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="localhostToggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <!-- Port policy — only shown while localhost preview is on. -->
+        <div id="localhostPorts" style="display:none;margin-top:10px">
+          <div style="margin-bottom:8px">
+            <label for="allowPorts" class="k" style="display:block;margin-bottom:3px">Allow only these ports</label>
+            <input type="text" id="allowPorts" placeholder="e.g. 3000, 8080 — blank = any port"
+              style="width:100%;box-sizing:border-box" />
+          </div>
+          <div>
+            <label for="denyPorts" class="k" style="display:block;margin-bottom:3px">Always block these ports</label>
+            <input type="text" id="denyPorts" placeholder="e.g. 5432, 6379 — takes priority over allow"
+              style="width:100%;box-sizing:border-box" />
+          </div>
+          <div class="hint" style="text-align:left;margin-top:8px">
+            While on, your phone can reach <b>every</b> allowed loopback port — turn
+            it off when you're done. Only paired &amp; approved devices ever connect.
+          </div>
+        </div>
       </div>
 
       <!-- Log -->
@@ -423,14 +482,45 @@
           return;
         }
         el.innerHTML = '';
-        for (const d of devices) {
+        // Favorites first, then online, then remembered/offline.
+        const sorted = [...devices].sort((a, b) =>
+          (b.favorite ? 2 : 0) + (b.online ? 1 : 0) - ((a.favorite ? 2 : 0) + (a.online ? 1 : 0)));
+        for (const d of sorted) {
           const row = document.createElement('div');
-          row.className = 'dev';
-          const time = new Date(d.since).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
-          const dot = document.createElement('span'); dot.className = 'd';
-          const name = document.createElement('span'); name.className = 'n'; name.textContent = d.deviceName;
-          const since = document.createElement('span'); since.className = 't'; since.textContent = 'since ' + time;
+          row.className = 'dev' + (d.online ? '' : ' offline');
+          const dot = document.createElement('span'); dot.className = 'd' + (d.online ? '' : ' off');
+          const name = document.createElement('span'); name.className = 'n';
+          name.textContent = d.label || d.deviceName;
+          const since = document.createElement('span'); since.className = 't';
+          since.textContent = d.online ? 'online' : 'paired · offline';
           row.append(dot, name, since);
+
+          // Per-device actions (only when we have its key). Favorite / Rename / Forget.
+          if (d.publicKey) {
+            const actions = document.createElement('span'); actions.className = 'dev-actions';
+            const star = document.createElement('button');
+            star.className = 'dev-btn' + (d.favorite ? ' on' : '');
+            star.title = d.favorite ? 'Unpin' : 'Pin to top';
+            star.textContent = d.favorite ? '★' : '☆';
+            star.onclick = () => window.phonecmd.favoriteDevice(d.publicKey, !d.favorite);
+
+            const ren = document.createElement('button');
+            ren.className = 'dev-btn'; ren.title = 'Rename'; ren.textContent = '✎';
+            ren.onclick = () => {
+              const label = prompt('Rename this device', d.label || d.deviceName);
+              if (label !== null) window.phonecmd.renameDevice(d.publicKey, label);
+            };
+
+            const del = document.createElement('button');
+            del.className = 'dev-btn danger'; del.title = 'Forget (revoke)'; del.textContent = '🗑';
+            del.onclick = () => {
+              if (confirm(`Forget "${d.label || d.deviceName}"? It will need to pair again (code + approval).`)) {
+                window.phonecmd.forgetDevice(d.publicKey);
+              }
+            };
+            actions.append(star, ren, del);
+            row.append(actions);
+          }
           el.appendChild(row);
         }
       }
@@ -545,6 +635,28 @@
       $('autoUpdateToggle').onchange = (e) => {
         window.phonecmd.setAutoUpdate(e.target.checked);
       };
+
+      // Localhost preview — toggle + port allow/deny lists, persisted on change.
+      const parsePorts = (s) =>
+        (s || '').split(/[\s,]+/).map(x => parseInt(x, 10))
+          .filter(n => Number.isInteger(n) && n >= 1 && n <= 65535);
+      const saveLocalhost = () => window.phonecmd.setLocalhost({
+        enabled: $('localhostToggle').checked,
+        allowPorts: parsePorts($('allowPorts').value),
+        denyPorts: parsePorts($('denyPorts').value),
+      });
+      const syncLocalhostUI = () => {
+        $('localhostPorts').style.display = $('localhostToggle').checked ? 'block' : 'none';
+      };
+      window.phonecmd.getLocalhost().then(cfg => {
+        $('localhostToggle').checked = cfg.enabled;
+        $('allowPorts').value = (cfg.allowPorts || []).join(', ');
+        $('denyPorts').value = (cfg.denyPorts || []).join(', ');
+        syncLocalhostUI();
+      });
+      $('localhostToggle').onchange = () => { syncLocalhostUI(); saveLocalhost(); };
+      $('allowPorts').onchange = saveLocalhost;
+      $('denyPorts').onchange = saveLocalhost;
 
       // Tell main we're ready so it starts the host (and we catch the qr event).
       window.phonecmd.ready();

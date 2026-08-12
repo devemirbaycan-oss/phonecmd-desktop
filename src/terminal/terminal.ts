@@ -368,6 +368,12 @@ export const termHistoryHandler: CommandHandler = async args => {
   return {history: await loadHistory(limit)};
 };
 
+/** term.historyClear — wipe the PC-stored command history. */
+export const termHistoryClearHandler: CommandHandler = async () => {
+  await clearHistory();
+  return {ok: true, history: []};
+};
+
 // ── profiles (persisted on the PC) ──────────────────────────────────────────
 
 export interface Profile {
@@ -459,6 +465,20 @@ export async function loadHistory(limit = 200): Promise<string[]> {
   }
 }
 
+/** Delete the whole history file (best-effort; a missing file is already clear). */
+export async function clearHistory(): Promise<void> {
+  try {
+    await fsp.rm(HISTORY_FILE, {force: true});
+  } catch {
+    /* best-effort — if it can't be removed, truncate instead */
+    try {
+      await fsp.writeFile(HISTORY_FILE, '');
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 export async function trimHistory(): Promise<void> {
   try {
     const raw = await fsp.readFile(HISTORY_FILE, 'utf8');
@@ -490,6 +510,7 @@ export const terminalCommands: Record<string, CommandHandler> = {
   'term.stop': termStopHandler,
   'term.usage': termUsageHandler,
   'term.history': termHistoryHandler,
+  'term.historyClear': termHistoryClearHandler,
   'profiles.list': profilesListHandler,
   'profiles.save': profilesSaveHandler,
   'profiles.delete': profilesDeleteHandler,

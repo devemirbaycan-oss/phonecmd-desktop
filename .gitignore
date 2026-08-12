@@ -25,3 +25,7 @@ cloudflared*
 .idea/
 .vscode/
 *.swp
+
+# code-analysis tool output (not source)
+graphify-out/
+src/graphify-out/

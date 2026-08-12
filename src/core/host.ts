@@ -23,6 +23,8 @@ import {CommandRouter, echoHandler} from '../commands/router';
 import {pcfsCommands} from '../pcfs/pcfs';
 import {terminalCommands} from '../terminal/terminal';
 import {cliDetectCommands} from '../clis/detect';
+import {netCommands} from '../net/proxy';
+import {deviceCommands} from '../pairing/deviceCommands';
 import {QrPayload, PairRequest} from '../protocol';
 
 export interface HostOptions {
@@ -131,7 +133,9 @@ export class HostCore extends EventEmitter {
       .register('echo', echoHandler)
       .registerAll(pcfsCommands)
       .registerAll(terminalCommands)
-      .registerAll(cliDetectCommands);
+      .registerAll(cliDetectCommands)
+      .registerAll(netCommands)
+      .registerAll(deviceCommands);
 
     // 4. Session manager. Approval is proxied through an event so a GUI can
     //    show a prompt; if no approver is provided we auto-accept.
